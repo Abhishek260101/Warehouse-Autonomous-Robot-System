@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0"?>
 
 <!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
      Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
@@ -7,6 +7,8 @@
 <robot name="robot_urdf" xmlns:xacro="http://www.ros.org/wiki/xacro">  
 
   <xacro:include filename="$(find robot_urdf)/urdf/robot_urdf_gazebo.xacro"/>
+  <xacro:include filename="$(find robot_urdf)/urdf/robot_urdf_control.xacro"/>
+  
   <!-- Dummy link to fix root inertia warning -->
   <link name="base_footprint"/>
 
