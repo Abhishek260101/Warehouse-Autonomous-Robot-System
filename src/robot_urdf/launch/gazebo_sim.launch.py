@@ -2,7 +2,7 @@ import os
 from os import pathsep
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, ExecuteProcess
 from launch.substitutions import Command, LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -44,6 +44,12 @@ def generate_launch_description():
         )
     )
 
+    # Delete entity before spawning
+    delete_entity_cmd = ExecuteProcess(
+        cmd=['ros2', 'service', 'call', '/delete_entity', 'gazebo_msgs/DeleteEntity', '{"name": "robot_urdf"}'],
+        output='screen'
+    )
+
     spawn_robot = Node(
         package="gazebo_ros", 
         executable="spawn_entity.py",
@@ -53,11 +59,27 @@ def generate_launch_description():
         output="screen"
     )
 
+    # Load controllers
+    load_joint_state_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+             'joint_state_broadcaster'],
+        output='screen'
+    )
+
+    load_velocity_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+             'simple_velocity_controller'],
+        output='screen'
+    )
+
     return LaunchDescription([
         env_var,
         model_arg,
         start_gazebo_server,
         start_gazebo_client,
         robot_state_publisher_node,
-        spawn_robot
+        delete_entity_cmd,
+        spawn_robot,
+        load_joint_state_controller,
+        load_velocity_controller
     ])
