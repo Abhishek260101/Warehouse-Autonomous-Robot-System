@@ -1,7 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100
-    use_sim_time: true
+    update_rate: 100  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -14,3 +13,8 @@ simple_velocity_controller:
     joints:
       - drive_wheel_joint_left
       - drive_wheel_joint_right
+    command_interfaces:
+      - velocity
+    state_interfaces:
+      - position
+      - velocity

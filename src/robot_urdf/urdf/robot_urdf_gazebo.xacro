@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <robot name="robot_urdf" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <!-- Move this one to ros2 control -->
   <transmission name="wheel_right_transmission">
     <plugin>transmission_interface/SimpleTransmission</plugin>
     <actuator name="wheel_right_motor" role="actuator_right"/>
-    <joint name="drive_wheel_joint_right" role="joint_right">
+    <joint name="drive_wheel_joint_right"    role="joint_right">
       <mechanical_reduction>1.0</mechanical_reduction>
     </joint>
   </transmission>
@@ -12,11 +13,11 @@
   <transmission name="wheel_left_transmission">
     <plugin>transmission_interface/SimpleTransmission</plugin>
     <actuator name="wheel_left_motor" role="actuator_left"/>
-    <joint name="drive_wheel_joint_left" role="joint_left">
+    <joint name="drive_wheel_joint_left"    role="joint_left">
       <mechanical_reduction>1.0</mechanical_reduction>
     </joint>
   </transmission>
-
+  
   <!-- Gazebo material and friction properties for links -->
   <gazebo reference="base_link">
     <material>Gazebo/Grey</material>
@@ -88,12 +89,9 @@
     <minDepth>0.001</minDepth>
   </gazebo>
 
-
   <!-- Gazebo plugin for ROS Control -->
   <gazebo>
-    <plugin name="gazebo_ros2_control" filename="libgazebo_ros_control.so">
-      <robot_param>/robot_urdf</robot_param>
-      <robot_param_node>robot_state_publisher</robot_param_node>
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
       <parameters>$(find robot_controller)/config/robot_controller.yaml</parameters>
     </plugin>
   </gazebo>
