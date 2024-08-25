@@ -2,14 +2,16 @@ import os
 from os import pathsep
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, ExecuteProcess
-from launch.substitutions import Command, LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, ExecuteProcess, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
+from launch.substitutions import Command, LaunchConfiguration, FindExecutable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     robot_urdf = get_package_share_directory("robot_urdf")
+    robot_controller = get_package_share_directory("robot_controller")
     robot_urdf_prefix = get_package_prefix("robot_urdf")
     gazebo_ros_dir = get_package_share_directory("gazebo_ros")
 
@@ -59,8 +61,10 @@ def generate_launch_description():
         output="screen"
     )
 
+    controller_params_file = os.path.join(robot_controller, "config", "robot_controller.yaml")
+
     # Load controllers
-    load_joint_state_controller = ExecuteProcess(
+    load_controllers = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
              'joint_state_broadcaster'],
         output='screen'
@@ -78,8 +82,17 @@ def generate_launch_description():
         start_gazebo_server,
         start_gazebo_client,
         robot_state_publisher_node,
-        delete_entity_cmd,
         spawn_robot,
-        load_joint_state_controller,
-        load_velocity_controller
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=spawn_robot,
+                on_exit=[load_controllers],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=load_controllers,
+                on_exit=[load_velocity_controller],
+            )
+        ),
     ])
