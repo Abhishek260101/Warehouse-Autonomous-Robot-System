@@ -75,10 +75,11 @@ def generate_launch_description():
         output="screen",
     )
 
-    # New arguments from reference file
+    # Arguments
     use_simple_controller_arg = DeclareLaunchArgument(
         "use_simple_controller",
-        default_value="True",
+        default_value="true",
+        description="Use simple velocity controller if true, otherwise use robot_diff_controller"
     )
     wheel_radius_arg = DeclareLaunchArgument(
         "wheel_radius",
@@ -100,22 +101,25 @@ def generate_launch_description():
         arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
     )
 
-    wheel_controller_spawner = Node(
+    robot_diff_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["robot_controller", "--controller-manager", "/controller_manager"],
+        arguments=["robot_diff_controller", "--controller-manager", "/controller_manager"],
         condition=UnlessCondition(use_simple_controller),
+    )
+
+    simple_velocity_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["simple_velocity_controller", "--controller-manager", "/controller_manager"],
+        condition=IfCondition(use_simple_controller),
     )
 
     # Simple controller group
     simple_controller = GroupAction(
         condition=IfCondition(use_simple_controller),
         actions=[
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=["simple_velocity_controller", "--controller-manager", "/controller_manager"]
-            ),
+            simple_velocity_controller_spawner,
             Node(
                 package="robot_controller",
                 executable="simple_controller",
@@ -144,7 +148,7 @@ def generate_launch_description():
     delay_controllers = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
-            on_exit=[wheel_controller_spawner, simple_controller],
+            on_exit=[robot_diff_controller_spawner, simple_controller],
         )
     )
 
