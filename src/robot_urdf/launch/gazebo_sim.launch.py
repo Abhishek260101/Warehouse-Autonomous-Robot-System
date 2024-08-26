@@ -2,12 +2,13 @@ import os
 from os import pathsep
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, RegisterEventHandler, GroupAction
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch.conditions import UnlessCondition, IfCondition
 
 def generate_launch_description():
     # Packages and directories
@@ -74,16 +75,55 @@ def generate_launch_description():
         output="screen",
     )
 
-    load_joint_state_broadcaster = Node(
+    # New arguments from reference file
+    use_simple_controller_arg = DeclareLaunchArgument(
+        "use_simple_controller",
+        default_value="True",
+    )
+    wheel_radius_arg = DeclareLaunchArgument(
+        "wheel_radius",
+        default_value="0.16",
+    )
+    wheel_separation_arg = DeclareLaunchArgument(
+        "wheel_separation",
+        default_value="0.304",
+    )
+    
+    use_simple_controller = LaunchConfiguration("use_simple_controller")
+    wheel_radius = LaunchConfiguration("wheel_radius")
+    wheel_separation = LaunchConfiguration("wheel_separation")
+
+    # Controller spawners
+    joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
     )
 
-    load_velocity_controller = Node(
+    wheel_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["simple_velocity_controller", "--controller-manager", "/controller_manager"],
+        arguments=["robot_controller", "--controller-manager", "/controller_manager"],
+        condition=UnlessCondition(use_simple_controller),
+    )
+
+    # Simple controller group
+    simple_controller = GroupAction(
+        condition=IfCondition(use_simple_controller),
+        actions=[
+            Node(
+                package="controller_manager",
+                executable="spawner",
+                arguments=["simple_velocity_controller", "--controller-manager", "/controller_manager"]
+            ),
+            Node(
+                package="robot_controller",
+                executable="simple_controller",
+                parameters=[
+                    {"wheel_radius": wheel_radius,
+                     "wheel_separation": wheel_separation}],
+            ),
+        ]
     )
 
     # Delay loading of controllers
@@ -97,25 +137,28 @@ def generate_launch_description():
     delay_joint_state_broadcaster = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=controller_manager,
-            on_exit=[load_joint_state_broadcaster],
+            on_exit=[joint_state_broadcaster_spawner],
         )
     )
 
-    delay_velocity_controller = RegisterEventHandler(
+    delay_controllers = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=load_joint_state_broadcaster,
-            on_exit=[load_velocity_controller],
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[wheel_controller_spawner, simple_controller],
         )
     )
 
     return LaunchDescription([
         env_var,
         model_arg,
+        use_simple_controller_arg,
+        wheel_radius_arg,
+        wheel_separation_arg,
         start_gazebo_server,
         start_gazebo_client,
         robot_state_publisher_node,
         spawn_robot,
         delay_controller_manager,
         delay_joint_state_broadcaster,
-        delay_velocity_controller
+        delay_controllers
     ])
