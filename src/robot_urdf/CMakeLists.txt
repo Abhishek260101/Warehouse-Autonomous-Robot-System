@@ -14,6 +14,10 @@ find_package(rclcpp REQUIRED)
 find_package(ros2_control REQUIRED)
 find_package(ros2_controllers REQUIRED)
 find_package(urdf REQUIRED)
+find_package(geometry_msgs REQUIRED)
+
+add_executable(twist_to_twiststamped src/twist_to_twiststamped.cpp)
+ament_target_dependencies(twist_to_twiststamped rclcpp geometry_msgs)
 
 install(DIRECTORY
   launch

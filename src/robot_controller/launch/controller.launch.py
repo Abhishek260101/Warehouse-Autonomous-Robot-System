@@ -1,48 +1,92 @@
-import os
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler
-from launch.event_handlers import OnProcessExit
+from launch.actions import DeclareLaunchArgument, GroupAction
 from launch_ros.actions import Node
-from launch.substitutions import Command
-from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import LaunchConfiguration
+from launch.conditions import UnlessCondition, IfCondition
+
 
 def generate_launch_description():
-    robot_urdf = get_package_share_directory('robot_urdf')
-    xacro_file = os.path.join(robot_urdf, 'urdf', 'robot_urdf.urdf.xacro')
     
-    robot_description = {'robot_description': Command(['xacro ', xacro_file])}
-
-    controller_params_file = os.path.join(get_package_share_directory('robot_controller'), 'config', 'robot_controller.yaml')
-
-    controller_manager = Node(
-        package="controller_manager",
-        executable="ros2_control_node",
-        parameters=[robot_description, controller_params_file, {'use_sim_time': True}],
-        output="screen",
+    use_simple_controller_arg = DeclareLaunchArgument(
+        "use_simple_controller",
+        default_value="True",
     )
+    use_python_arg = DeclareLaunchArgument(
+        "use_python",
+        default_value="False",
+    )
+    wheel_radius_arg = DeclareLaunchArgument(
+        "wheel_radius",
+        default_value="0.16",
+    )
+    wheel_separation_arg = DeclareLaunchArgument(
+        "wheel_separation",
+        default_value="0.304",
+    )
+    
+    use_simple_controller = LaunchConfiguration("use_simple_controller")
+    use_python = LaunchConfiguration("use_python")
+    wheel_radius = LaunchConfiguration("wheel_radius")
+    wheel_separation = LaunchConfiguration("wheel_separation")
 
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "joint_state_broadcaster",
+            "--controller-manager",
+            "/controller_manager",
+        ],
     )
 
-    simple_velocity_controller_spawner = Node(
+    wheel_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["simple_velocity_controller", "--controller-manager", "/controller_manager"],
+        arguments=["robot_controller", 
+                   "--controller-manager", 
+                   "/controller_manager"
+        ],
+        condition=UnlessCondition(use_simple_controller),
     )
 
-    # Delay start of robot_controller after `joint_state_broadcaster`
-    delay_robot_controller_spawner_after_joint_state_broadcaster_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[simple_velocity_controller_spawner],
-        )
+    simple_controller = GroupAction(
+        condition=IfCondition(use_simple_controller),
+        actions=[
+            Node(
+                package="controller_manager",
+                executable="spawner",
+                arguments=["simple_velocity_controller", 
+                           "--controller-manager", 
+                           "/controller_manager"
+                ]
+            ),
+            Node(
+                package="robot_controller",
+                executable="simple_controller.py",
+                parameters=[
+                    {"wheel_radius": wheel_radius,
+                     "wheel_separation": wheel_separation}],
+                condition=IfCondition(use_python),
+            ),
+            Node(
+                package="robot_controller",
+                executable="simple_controller",
+                parameters=[
+                    {"wheel_radius": wheel_radius,
+                     "wheel_separation": wheel_separation}],
+                condition=UnlessCondition(use_python),
+            ),
+        ]
     )
 
-    return LaunchDescription([
-        controller_manager,
-        joint_state_broadcaster_spawner,
-        delay_robot_controller_spawner_after_joint_state_broadcaster_spawner
-    ])
+    return LaunchDescription(
+        [
+            use_simple_controller_arg,
+            use_python_arg,
+            wheel_radius_arg,
+            wheel_separation_arg,
+            joint_state_broadcaster_spawner,
+            wheel_controller_spawner,
+            simple_controller,
+        ]
+    )
