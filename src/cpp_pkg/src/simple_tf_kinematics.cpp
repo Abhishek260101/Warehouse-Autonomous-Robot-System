@@ -3,7 +3,7 @@
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-SimpleTfKinematics::SimpleTfKinematics(const std::string &name) : Node(name), x_increment_(0.05), last_x_(0.0) {
+SimpleTfKinematics::SimpleTfKinematics(const std::string &name) : Node(name), x_increment_(0.05), last_x_(0.0), rotations_counter_(0) {
 
     static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 
@@ -32,6 +32,9 @@ SimpleTfKinematics::SimpleTfKinematics(const std::string &name) : Node(name), x_
   // Service Server
     get_transform_srv_ = create_service<robot_interface::srv::GetTransform>("get_transform", std::bind(&SimpleTfKinematics::getTransformCallback, this, _1, _2)); 
 
+  // Quaternion
+    last_orientation_.setRPY(0, 0, 0);
+    orientation_increment_.setRPY(0, 0, 0.05); // in radians
 }
 
 void SimpleTfKinematics::timerCallback()
@@ -47,8 +50,24 @@ void SimpleTfKinematics::timerCallback()
   // dynamic_transform_stamped_.transform.rotation.z = 0;
   // dynamic_transform_stamped_.transform.rotation.w = 1;
 
+  // Euler to Quaternion
+  tf2::Quaternion q;
+  q = last_orientation_ * orientation_increment_;
+  q.normalize(); // sum == 1
+  dynamic_transform_stamped_.transform.rotation.x = q.x();
+  dynamic_transform_stamped_.transform.rotation.y = q.y();
+  dynamic_transform_stamped_.transform.rotation.z = q.z();
+  dynamic_transform_stamped_.transform.rotation.w = q.w();
+
   dynamic_tf_broadcaster_->sendTransform(dynamic_transform_stamped_);
   last_x_ = dynamic_transform_stamped_.transform.translation.x;
+  last_orientation_ = q;
+  rotations_counter_++;
+  if(rotations_counter_ >= 100)
+  {
+    orientation_increment_ = orientation_increment_.inverse();
+    rotations_counter_ = 0;
+  }
 
 }
 
