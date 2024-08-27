@@ -9,7 +9,7 @@
 #include <tf2/exceptions.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
-// #include "bumperbot_msgs/srv/get_transform.hpp"
+#include "robot_interface/srv/get_transform.hpp"
 
 #include <memory>
 
@@ -22,11 +22,11 @@ public:
 private: 
     void timerCallback();
 
-    // bool getTransformCallback(const std::shared_ptr<bumperbot_msgs::srv::GetTransform::Request> req,
-    //                           const std::shared_ptr<bumperbot_msgs::srv::GetTransform::Response> res);
+    bool getTransformCallback(const std::shared_ptr<robot_interface::srv::GetTransform::Request> req,
+                              const std::shared_ptr<robot_interface::srv::GetTransform::Response> res);
 
     rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Service<bumperbot_msgs::srv::GetTransform>::SharedPtr get_transform_srv_;
+    rclcpp::Service<robot_interface::srv::GetTransform>::SharedPtr get_transform_srv_;
 
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> dynamic_tf_broadcaster_;
@@ -36,8 +36,8 @@ private:
     double last_x_;
     double x_increment_;
     
-    // std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
-    // std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     // tf2::Quaternion last_orientation_;
     // tf2::Quaternion orientation_increment_;
     // int rotations_counter_;
