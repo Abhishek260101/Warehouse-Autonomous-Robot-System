@@ -4,7 +4,7 @@
   <name>robot_urdf</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="abhishek@airgility.co">abhishek</maintainer>
+  <maintainer email="avhad.abhishek005@gmail.com">abhishek</maintainer>
   <license>TODO: License declaration</license>
 
   <exec_depend>robot_state_publisher</exec_depend>

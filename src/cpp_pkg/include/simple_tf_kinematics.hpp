@@ -38,9 +38,9 @@ private:
     
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-    // tf2::Quaternion last_orientation_;
-    // tf2::Quaternion orientation_increment_;
-    // int rotations_counter_;
+    tf2::Quaternion last_orientation_;
+    tf2::Quaternion orientation_increment_;
+    int rotations_counter_;
 };
 
 #endif // SIMPLE_TF_KINEMATICS_HPP
