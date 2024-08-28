@@ -13,9 +13,13 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(ros2_control REQUIRED)
 find_package(ros2_controllers REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 # Specify C++ standard
 set(CMAKE_CXX_STANDARD 14)
@@ -30,6 +34,10 @@ ament_target_dependencies(simple_controller
   rclcpp
   geometry_msgs
   std_msgs
+  sensor_msgs
+  tf2
+  nav_msgs
+  tf2_ros
 )
 
 install(TARGETS
