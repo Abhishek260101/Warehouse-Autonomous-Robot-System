@@ -6,9 +6,7 @@
 
 ![Screenshot from 2024-11-19 18-59-31](https://github.com/user-attachments/assets/bc097d65-2ae6-4a29-b4a4-ef06c7e8e7ca)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://github.com/username/repo/actions/workflows/build.yml/badge.svg)](https://github.com/username/repo/actions)
-[![Coverage Status](https://codecov.io/gh/username/repo/branch/main/graph/badge.svg)](https://codecov.io/gh/username/repo)
+![CICD Workflow status](https://github.com/kashifansaricodes/Human-Obstacle-Detector-and-Tracker/actions/workflows/run-unit-test-and-upload-codecov.yml/badge.svg) [![codecov](https://codecov.io/gh/kashifansaricodes/Human-Obstacle-Detector-and-Tracker/graph/badge.svg?token=T484S8WKBC)](https://codecov.io/gh/kashifansaricodes/Human-Obstacle-Detector-and-Tracker)[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
 This project implements a multi-robot mapping system using ROS2 Humble that enables two TurtleBot3 robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
