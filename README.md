@@ -1,4 +1,10 @@
-# Multi-Robot Mapping System (ROS2)
+# MULTI-ROBOT MAP MERGING      [Code: MuRoMM]
+
+
+![Screenshot from 2024-11-16 19-20-20](https://github.com/user-attachments/assets/2dde64ba-3bc4-45b3-98a7-5ec59935a6ba)
+
+
+![Screenshot from 2024-11-19 18-59-31](https://github.com/user-attachments/assets/bc097d65-2ae6-4a29-b4a4-ef06c7e8e7ca)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/username/repo/actions/workflows/build.yml/badge.svg)](https://github.com/username/repo/actions)
