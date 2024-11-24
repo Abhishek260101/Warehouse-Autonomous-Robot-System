@@ -8,6 +8,20 @@
 
 ![CICD Workflow status](https://github.com/Abhishek260101/Warehouse-Autonomous-Robot-System/actions/workflows/run-unit-test-and-upload-codecov.yml/badge.svg) [![codecov](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System/graph/badge.svg?token=813CD16HJ6)](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System)[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+---
+
+## Backlog
+
+[View the Backlog](https://docs.google.com/spreadsheets/d/1bFknVXY7FlzeFsWu55ukKkjZbq8C_RPbGdnfwVOcJKI/edit?usp=sharing)
+
+---
+
+## Backlog
+
+[View the Sprint Plan]([https://docs.google.com/spreadsheets/d/1bFknVXY7FlzeFsWu55ukKkjZbq8C_RPbGdnfwVOcJKI/edit?usp=sharing](https://docs.google.com/document/d/1ba09P1LtX2oa4Xgsw8PJ3S9JoSZA7rdLhsY1Vzfunj0/edit?tab=t.0))
+
+---
+
 ## Overview
 This project implements a multi-robot mapping system using ROS2 Humble that enables two TurtleBot3 robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
 
