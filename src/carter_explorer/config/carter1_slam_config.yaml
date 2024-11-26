@@ -1,0 +1,26 @@
+slam_toolbox:
+  ros__parameters:
+    # Robot frame parameters
+    odom_frame: carter1/odom
+    base_frame: carter1/base_link
+    map_frame: carter1/map  # Changed from map to carter1/map
+    
+    # Scan matching parameters
+    use_scan_matching: true
+    use_scan_bagging: true
+    scan_topic: /carter1/front_3d_lidar/lidar_points
+    mode: mapping
+
+    # Map parameters
+    resolution: 0.05
+    map_update_interval: 5.0
+    publish_occupancy_map: true
+    
+    # Additional debug parameters
+    debug_logging: true
+    throttle_scans: 1
+    transform_timeout: 0.2
+    
+    # Enable more frequent updates
+    minimum_time_interval: 0.1
+    update_periodical: 1.0

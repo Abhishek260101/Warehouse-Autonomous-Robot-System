@@ -1,0 +1,36 @@
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Value: true
+    
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Value: true
+      
+    # Carter1 displays
+    - Class: rviz_default_plugins/Map
+      Name: Carter1 Map
+      Topic: /carter1/map
+      Value: true
+      
+    - Class: rviz_default_plugins/LaserScan
+      Name: Carter1 Scan
+      Topic: /carter1/front_2d_lidar/scan
+      Value: true
+      
+    # Carter2 displays
+    - Class: rviz_default_plugins/Map
+      Name: Carter2 Map
+      Topic: /carter2/map
+      Value: true
+      
+    - Class: rviz_default_plugins/LaserScan
+      Name: Carter2 Scan
+      Topic: /carter2/front_2d_lidar/scan
+      Value: true
+
+  Global Options:
+    Fixed Frame: carter1/map
+    Background Color: 48; 48; 48
