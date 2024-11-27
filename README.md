@@ -171,8 +171,9 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Team
-- [Team Member 1](https://github.com/username1)
-- [Team Member 2](https://github.com/username2)
+- Kashif Ansari
+- Abhishek Avadh
+- Piyush Goenka
 
 ## References
 - [ROS2 Navigation (Nav2)](https://navigation.ros.org/)
