@@ -1,0 +1,25 @@
+slam_toolbox:
+  ros__parameters:
+    # Robot frame setup
+    odom_frame: carter1/odom
+    base_frame: carter1/base_link
+    map_frame: map
+    scan_frame: carter1/front_3d_lidar
+
+    # Processing Parameters
+    use_sim_time: true
+    max_laser_range: 20.0
+    map_update_interval: 5.0
+    transform_timeout: 0.5
+    tf_buffer_duration: 30.0
+    
+    # Queue Parameters
+    minimum_time_interval: 0.5
+    transform_publish_period: 0.05
+    message_queue_size: 2000  # Increased to match scan size
+    skip_threshold: 0.5
+    
+    # Performance Parameters
+    threads: 4  # Increase processing threads
+    enable_scan_matching: true
+    enable_loop_closing: false  # Disable for better performance initially

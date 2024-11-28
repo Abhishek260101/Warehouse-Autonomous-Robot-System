@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Include SLAM Toolbox launch -->
+    <include file="$(find-pkg-share frontier_explorer)/launch/slam.launch.xml"/>
+
+    <!-- Launch Frontier Explorer -->
+    <node pkg="frontier_explorer" exec="frontier_explorer" name="frontier_explorer" output="screen"/>
+</launch>
