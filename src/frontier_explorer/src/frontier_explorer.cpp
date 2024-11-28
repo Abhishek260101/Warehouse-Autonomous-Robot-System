@@ -8,6 +8,12 @@
 FrontierExplorer::FrontierExplorer()
 : Node("frontier_explorer"), has_goal_(false)
 {
+    // Only declare parameter if it hasn't been declared
+    if (!this->has_parameter("use_sim_time")) {
+        this->declare_parameter<bool>("use_sim_time", true);
+    }
+    bool use_sim_time = this->get_parameter("use_sim_time").as_bool();
+    
     // Initialize TF2
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -26,9 +32,9 @@ FrontierExplorer::FrontierExplorer()
         std::chrono::seconds(1),
         std::bind(&FrontierExplorer::exploration_callback, this));
         
-    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialized");
+    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialized with use_sim_time=%s", 
+                use_sim_time ? "true" : "false");
 }
-
 void FrontierExplorer::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
     current_scan_ = msg;
@@ -78,16 +84,26 @@ std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
     }
     
     try {
+        rclcpp::Time transform_time;
+        
+        // If using sim time, use scan timestamp, otherwise use latest available time
+        if (this->get_parameter("use_sim_time").as_bool()) {
+            transform_time = rclcpp::Time(scan->header.stamp);
+        } else {
+            transform_time = this->now();
+        }
+
         // Check if transform is available
         if (!tf_buffer_->canTransform(
             "map",
             "front_3d_lidar",
-            scan->header.stamp,
+            transform_time,
             rclcpp::Duration::from_seconds(1.0)))
         {
             RCLCPP_DEBUG(this->get_logger(), 
-                "Transform from %s to map not available yet", 
-                scan->header.frame_id.c_str());
+                "Transform from %s to map not available yet at time %f", 
+                scan->header.frame_id.c_str(),
+                transform_time.seconds());
             return frontiers;
         }
 
@@ -96,7 +112,7 @@ std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
             tf_buffer_->lookupTransform(
                 "map",
                 "front_3d_lidar",
-                scan->header.stamp,
+                transform_time,
                 rclcpp::Duration::from_seconds(1.0));
         
         std::vector<std::pair<double, double>> points;
@@ -141,7 +157,10 @@ std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
         RCLCPP_DEBUG(this->get_logger(), "Found %zu frontiers", frontiers.size());
         
     } catch (tf2::TransformException& ex) {
-        RCLCPP_WARN(this->get_logger(), "Could not transform laser scan: %s", ex.what());
+        RCLCPP_WARN(this->get_logger(), 
+            "Could not transform laser scan: %s\nTime: %f", 
+            ex.what(),
+            rclcpp::Time(scan->header.stamp).seconds());
     }
     
     return frontiers;
@@ -150,13 +169,12 @@ std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
 void FrontierExplorer::move_to_frontier(const std::pair<double, double>& frontier)
 {
     try {
-        // Get robot's current position in map frame
-        geometry_msgs::msg::TransformStamped transform = 
-            tf_buffer_->lookupTransform(
-                "map",
-                "base_link",
-                this->now(),
-                rclcpp::Duration::from_seconds(1.0));
+        // Use current time and allow some time for transform lookup
+        auto transform = tf_buffer_->lookupTransform(
+            "map",
+            "base_link",
+            this->get_clock()->now(),  // Current time
+            rclcpp::Duration::from_seconds(1.0));
                                      
         // Calculate relative position of frontier
         double dx = frontier.first - transform.transform.translation.x;
@@ -196,6 +214,8 @@ void FrontierExplorer::move_to_frontier(const std::pair<double, double>& frontie
     }
 }
 
+
+
 void FrontierExplorer::exploration_callback()
 {
     if (!current_scan_) {
@@ -216,14 +236,13 @@ void FrontierExplorer::exploration_callback()
     
     if (!has_goal_) {
         try {
-            // Get robot's current position in map frame
-            geometry_msgs::msg::TransformStamped transform = 
-                tf_buffer_->lookupTransform(
-                    "map",
-                    "base_link",
-                    this->now(),
-                    rclcpp::Duration::from_seconds(1.0));
-                                         
+            // Get transform at latest available time
+            auto transform = tf_buffer_->lookupTransform(
+                "map",
+                "base_link",
+                this->get_clock()->now(),  // Current time
+                rclcpp::Duration::from_seconds(1.0));
+                                     
             double robot_x = transform.transform.translation.x;
             double robot_y = transform.transform.translation.y;
             
