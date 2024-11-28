@@ -6,13 +6,16 @@
 #include <thread>
 
 FrontierExplorer::FrontierExplorer()
-: Node("frontier_explorer"), has_goal_(false)
+: Node("frontier_explorer", rclcpp::NodeOptions()
+    .automatically_declare_parameters_from_overrides(true)
+    .allow_undeclared_parameters(false)),
+    has_goal_(false)
 {
-    // Only declare parameter if it hasn't been declared
-    if (!this->has_parameter("use_sim_time")) {
-        this->declare_parameter<bool>("use_sim_time", true);
-    }
+    RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer initialization");
+    
+    // Get use_sim_time parameter (should be already declared via launch file)
     bool use_sim_time = this->get_parameter("use_sim_time").as_bool();
+    RCLCPP_INFO(this->get_logger(), "Using sim time: %s", use_sim_time ? "true" : "false");
     
     // Initialize TF2
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -27,14 +30,14 @@ FrontierExplorer::FrontierExplorer()
     cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
         "/carter1/cmd_vel", 10);
         
-    // Initialize timer for exploration
+    // Initialize timer for exploration with a slower rate
     timer_ = this->create_wall_timer(
-        std::chrono::seconds(1),
+        std::chrono::milliseconds(500),  // 2Hz instead of 1Hz
         std::bind(&FrontierExplorer::exploration_callback, this));
         
-    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialized with use_sim_time=%s", 
-                use_sim_time ? "true" : "false");
+    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialization complete");
 }
+
 void FrontierExplorer::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
     current_scan_ = msg;
