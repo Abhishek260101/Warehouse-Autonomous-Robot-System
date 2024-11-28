@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Launch SLAM Toolbox first -->
+    <node pkg="slam_toolbox" exec="sync_slam_toolbox_node" name="slam_toolbox" output="screen">
+        <param name="use_sim_time" value="true"/>
+        <param name="odom_frame" value="odom"/>
+        <param name="base_frame" value="base_link"/>
+        <param name="map_frame" value="map"/>
+
+        <!-- Remappings -->
+        <remap from="scan" to="/carter1/front_3d_lidar/lidar_points"/>
+        <remap from="odom" to="/carter1/chassis/odom"/>
+        <remap from="/tf" to="/carter1/tf"/>
+        <remap from="/tf_static" to="/carter1/tf_static"/>
+    </node>
+
+    <!-- Wait for SLAM Toolbox to initialize -->
+    <node pkg="frontier_explorer" exec="frontier_explorer" name="frontier_explorer" 
+          output="screen" launch-prefix="bash -c 'sleep 5; $0 $@'">
+        <remap from="/tf" to="/carter1/tf"/>
+        <remap from="/tf_static" to="/carter1/tf_static"/>
+    </node>
+</launch>
