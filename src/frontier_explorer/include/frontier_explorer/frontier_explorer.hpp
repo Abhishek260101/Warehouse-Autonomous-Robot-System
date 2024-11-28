@@ -48,6 +48,12 @@ private:
     const double GAP_THRESHOLD = 1.0;             // meters (minimum gap to consider as frontier)
     const double ROTATION_SPEED = 0.3;            // rad/s
     const double LINEAR_SPEED = 0.2;              // m/s
+    const double MIN_OBSTACLE_DISTANCE = 0.5;  // Minimum distance to obstacles
+    const double SAFETY_MARGIN = 0.3;          // Additional safety margin for obstacle avoidance
+    const double MIN_FRONTIER_DISTANCE = 1.0;  // Minimum distance between frontiers
+    const double SCAN_ANGLE_MIN = -M_PI/4;  // -45 degrees
+    const double SCAN_ANGLE_MAX = M_PI/4;   // +45 degrees
+    const double MIN_FRONTIER_AREA = 1.0;   // Minimum area around frontier to consider it valid
 };
 
 #endif // FRONTIER_EXPLORER_HPP_
