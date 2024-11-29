@@ -19,22 +19,51 @@
             <!-- Remappings -->
             <remap from="scan" to="/carter1/front_3d_lidar/lidar_points"/>
             <remap from="odom" to="/carter1/chassis/odom"/>
-            <remap from="/tf" to="/carter1/tf"/>
-            <remap from="/tf_static" to="/carter1/tf_static"/>
+            <remap from="tf" to="/carter1/tf"/>
+            <remap from="tf_static" to="/carter1/tf_static"/>
         </node>
 
-        <!-- Single Frontier Explorer instance -->
+        <!-- Frontier Explorer for carter1 -->
         <node pkg="frontier_explorer" exec="frontier_explorer" 
-              name="frontier_explorer" 
+              name="frontier_explorer_carter1" 
               output="screen">
-            <!-- Parameters -->
             <param name="use_sim_time" value="$(var use_sim_time)"/>
-            
-            <!-- Topics -->
-            <remap from="/carter1/front_3d_lidar/lidar_points" to="/carter1/front_3d_lidar/lidar_points"/>
-            <remap from="/carter1/cmd_vel" to="/carter1/cmd_vel"/>
-            <remap from="/tf" to="/carter1/tf"/>
-            <remap from="/tf_static" to="/carter1/tf_static"/>
+            <param name="robot_namespace" value="carter1"/>
+            <!-- Important TF remappings -->
+            <remap from="tf" to="/carter1/tf"/>
+            <remap from="tf_static" to="/carter1/tf_static"/>
+        </node>
+    </group>
+
+    <!-- Launch group for carter2 -->
+    <group>
+        <!-- SLAM Toolbox -->
+        <node pkg="slam_toolbox" exec="sync_slam_toolbox_node" name="slam_toolbox_carter2" output="screen">
+            <param name="use_sim_time" value="$(var use_sim_time)"/>
+            <param name="odom_frame" value="odom"/>
+            <param name="base_frame" value="base_link"/>
+            <param name="map_frame" value="map"/>
+            <param name="message_queue_size" value="2000"/>
+            <param name="minimum_time_interval" value="0.5"/>
+            <param name="transform_timeout" value="0.2"/>
+            <param name="tf_buffer_duration" value="30.0"/>
+
+            <!-- Remappings -->
+            <remap from="scan" to="/carter2/front_3d_lidar/lidar_points"/>
+            <remap from="odom" to="/carter2/chassis/odom"/>
+            <remap from="tf" to="/carter2/tf"/>
+            <remap from="tf_static" to="/carter2/tf_static"/>
+        </node>
+
+        <!-- Frontier Explorer for carter2 -->
+        <node pkg="frontier_explorer" exec="frontier_explorer" 
+              name="frontier_explorer_carter2" 
+              output="screen">
+            <param name="use_sim_time" value="$(var use_sim_time)"/>
+            <param name="robot_namespace" value="carter2"/>
+            <!-- Important TF remappings -->
+            <remap from="tf" to="/carter2/tf"/>
+            <remap from="tf_static" to="/carter2/tf_static"/>
         </node>
     </group>
 </launch>
