@@ -3,17 +3,20 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2/utils.h>
 #include <vector>
 #include <queue>
 #include <cmath>
+#include <memory>
 
 class FrontierExplorer : public rclcpp::Node {
 public:
     FrontierExplorer() : Node("frontier_explorer") {
-        // Declare all parameters
+        // Read launch file parameters first
         this->declare_parameter("robot_name", "carter1");
         this->declare_parameter("min_frontier_size", 10);
         this->declare_parameter("exploration_timeout", 300.0);
@@ -21,48 +24,56 @@ public:
         this->declare_parameter("angular_velocity", 0.3);
         this->declare_parameter("goal_tolerance", 0.5);
         this->declare_parameter("map_update_tolerance", 5.0);
+        this->declare_parameter("rotation_duration", 12.0);
 
         robot_name_ = this->get_parameter("robot_name").as_string();
         min_frontier_size_ = this->get_parameter("min_frontier_size").as_int();
         
         RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer for %s", robot_name_.c_str());
 
+        // Initialize TF buffer and listener
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
         // Publishers
         cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
             "/" + robot_name_ + "/cmd_vel", 10);
 
-        // Subscribers with QoS settings
-        auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable();
-        
+        // Create subscribers with reliable QoS
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(10))
+            .reliable()
+            .durability_volatile();
+
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/map", qos,
-            std::bind(&FrontierExplorer::mapCallback, this, std::placeholders::_1));
+            "/map", qos, std::bind(&FrontierExplorer::mapCallback, this, std::placeholders::_1));
 
         odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/" + robot_name_ + "/chassis/odom", qos,
+            "/" + robot_name_ + "/chassis/odom", qos, 
             std::bind(&FrontierExplorer::odomCallback, this, std::placeholders::_1));
 
         scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/" + robot_name_ + "/front_2d_lidar/scan", qos,
             std::bind(&FrontierExplorer::scanCallback, this, std::placeholders::_1));
 
-        // Create timers
+        // Create timers with slightly different periods to avoid synchronization issues
         explore_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(100),
             std::bind(&FrontierExplorer::exploreLoop, this));
 
         status_timer_ = this->create_wall_timer(
-            std::chrono::seconds(1),
+            std::chrono::milliseconds(1100),  // Slightly offset from 1 second
             std::bind(&FrontierExplorer::printStatus, this));
 
-        current_state_ = SCANNING;
+        // Initialize exploration
+        current_state_ = INITIALIZING;
         start_time_ = this->now();
-        last_map_update_time_ = this->now();
-    }
 
+        RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialized and waiting for data");
+    }
 
 private:
     enum ExplorationState {
+        INITIALIZING,
         SCANNING,
         MOVING_TO_FRONTIER,
         ROTATING,
@@ -80,11 +91,43 @@ private:
         Frontier() : centroid(0, 0) {}
     };
 
-    void printStatus() {
-        if (current_state_ == FINISHED) {
-            return;
+    void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        if (!map_received_) {
+            RCLCPP_INFO(this->get_logger(), 
+                "Received first map update - Size: %dx%d, Resolution: %.3f",
+                msg->info.width, msg->info.height, msg->info.resolution);
         }
+        map_ = *msg;
+        map_received_ = true;
+        checkInitialization();
+    }
 
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        if (!pose_received_) {
+            RCLCPP_INFO(this->get_logger(), "Received first odometry message");
+        }
+        current_pose_ = *msg;
+        pose_received_ = true;
+        checkInitialization();
+    }
+
+    void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        if (!scan_received_) {
+            RCLCPP_INFO(this->get_logger(), "Received first laser scan");
+        }
+        latest_scan_ = *msg;
+        scan_received_ = true;
+        checkInitialization();
+    }
+
+    void checkInitialization() {
+        if (current_state_ == INITIALIZING && map_received_ && pose_received_ && scan_received_) {
+            RCLCPP_INFO(this->get_logger(), "All data received, starting exploration");
+            current_state_ = SCANNING;
+        }
+    }
+
+    void printStatus() {
         RCLCPP_INFO(this->get_logger(), 
             "Status - Map: %s, Odom: %s, Scan: %s, State: %d", 
             map_received_ ? "✓" : "✗",
@@ -93,73 +136,27 @@ private:
             current_state_);
 
         if (map_received_) {
-            int total_explored = 0;
-            int total_unknown = 0;
+            int known_cells = 0;
+            int free_cells = 0;
             for (const auto& cell : map_.data) {
-                if (cell >= 0) total_explored++;
-                if (cell == -1) total_unknown++;
+                if (cell >= 0) known_cells++;
+                if (cell == 0) free_cells++;
             }
-            float explored_percentage = (float)total_explored / map_.data.size() * 100;
-            RCLCPP_INFO(this->get_logger(), "Exploration progress: %.1f%%", explored_percentage);
+            float explored_percentage = (float)known_cells / map_.data.size() * 100;
+            RCLCPP_INFO(this->get_logger(), 
+                "Exploration progress: %.1f%% (Free: %.1f%%)",
+                explored_percentage,
+                (float)free_cells / map_.data.size() * 100);
         }
-    }
-
-    void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        if (!map_received_) {
-            RCLCPP_INFO(this->get_logger(), "Received first map update");
-        }
-        
-        // Check if the map has actual data
-        bool has_data = false;
-        for (const auto& cell : msg->data) {
-            if (cell != -1) {  // If any cell is not unknown
-                has_data = true;
-                break;
-            }
-        }
-        
-        if (has_data) {
-            map_ = *msg;
-            map_received_ = true;
-            RCLCPP_INFO(this->get_logger(), "Map updated - Size: %dx%d", 
-                msg->info.width, msg->info.height);
-        } else if (!map_received_) {
-            // If we haven't received a valid map yet, start a small rotation
-            // to help SLAM get initial readings
-            geometry_msgs::msg::Twist cmd_vel;
-            cmd_vel.angular.z = 0.2;  // Slow rotation
-            cmd_vel_pub_->publish(cmd_vel);
-            RCLCPP_INFO_THROTTLE(this->get_logger(), 
-                *this->get_clock(), 
-                5000, // Log every 5 seconds
-                "Waiting for valid map data, rotating slowly...");
-        }
-    }
-
-
-    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
-        current_pose_ = *msg;
-        if (!pose_received_) {
-            RCLCPP_INFO(this->get_logger(), "Received first odometry message");
-        }
-        pose_received_ = true;
-    }
-
-    void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-        latest_scan_ = *msg;
-        if (!scan_received_) {
-            RCLCPP_INFO(this->get_logger(), "Received first laser scan");
-        }
-        scan_received_ = true;
     }
 
     bool isFrontierPoint(int x, int y) {
-        if (x < 0 || x >= (int)map_.info.width || 
-            y < 0 || y >= (int)map_.info.height) {
+        // Check bounds
+        if (x < 0 || x >= (int)map_.info.width || y < 0 || y >= (int)map_.info.height) {
             return false;
         }
 
-        // Point must be unknown
+        // Point must be unknown (-1)
         if (map_.data[y * map_.info.width + x] != -1) {
             return false;
         }
@@ -193,7 +190,7 @@ private:
         int robot_y = (current_pose_.pose.pose.position.y - map_.info.origin.position.y) 
                      / map_.info.resolution;
 
-        // Start flood fill from robot position
+        // Flood fill from robot position
         std::queue<Point> queue;
         queue.push(Point(robot_x, robot_y));
         visited[robot_y][robot_x] = true;
@@ -203,13 +200,12 @@ private:
             queue.pop();
 
             if (isFrontierPoint(p.x, p.y)) {
-                // Start a new frontier
                 Frontier frontier;
                 std::queue<Point> frontier_queue;
                 frontier_queue.push(p);
                 visited[p.y][p.x] = true;
 
-                // Collect all connected frontier points
+                // Collect connected frontier points
                 while (!frontier_queue.empty()) {
                     Point fp = frontier_queue.front();
                     frontier_queue.pop();
@@ -229,7 +225,6 @@ private:
                     }
                 }
 
-                // Only add frontiers above minimum size
                 if (frontier.points.size() >= (size_t)min_frontier_size_) {
                     // Calculate centroid
                     int sum_x = 0, sum_y = 0;
@@ -301,7 +296,7 @@ private:
         double dy = target_y - current_pose_.pose.pose.position.y;
         double distance = std::sqrt(dx * dx + dy * dy);
 
-        // Get current yaw from quaternion using tf2::getYaw
+        // Get current yaw from quaternion
         double current_yaw = tf2::getYaw(current_pose_.pose.pose.orientation);
         
         // Calculate desired heading
@@ -309,18 +304,22 @@ private:
 
         // Calculate angle difference
         double angle_diff = desired_yaw - current_yaw;
-        if (angle_diff > M_PI) angle_diff -= 2 * M_PI;
-        if (angle_diff < -M_PI) angle_diff += 2 * M_PI;
+        while (angle_diff > M_PI) angle_diff -= 2 * M_PI;
+        while (angle_diff < -M_PI) angle_diff += 2 * M_PI;
 
-        // Create and publish velocity command
+        // Create velocity command
         geometry_msgs::msg::Twist cmd_vel;
         
         // Angular velocity control
         double angular_velocity = this->get_parameter("angular_velocity").as_double();
-        cmd_vel.angular.z = angular_velocity * angle_diff;
+        cmd_vel.angular.z = std::clamp(
+            angular_velocity * angle_diff,
+            -angular_velocity,
+            angular_velocity
+        );
 
         // Linear velocity control
-        if (std::abs(angle_diff) < 0.3) {  // Only move forward when roughly facing the target
+        if (std::abs(angle_diff) < 0.3) {
             double linear_velocity = this->get_parameter("linear_velocity").as_double();
             cmd_vel.linear.x = linear_velocity * std::min(1.0, distance);
         }
@@ -329,27 +328,14 @@ private:
     }
 
     void exploreLoop() {
-        static rclcpp::Time last_valid_map_time = this->now();
-        
         if (!map_received_ || !pose_received_ || !scan_received_) {
-            if (!map_received_) {
-                // If no map received for a while, trigger a rotation
-                if ((this->now() - last_valid_map_time).seconds() > 
-                    this->get_parameter("map_update_tolerance").as_double()) {
-                    geometry_msgs::msg::Twist cmd_vel;
-                    cmd_vel.angular.z = 0.2;
-                    cmd_vel_pub_->publish(cmd_vel);
-                }
-            }
             RCLCPP_WARN_THROTTLE(this->get_logger(), 
-                *this->get_clock(), 
-                5000,
-                "Waiting for data - Map: %d, Pose: %d, Scan: %d",
-                map_received_, pose_received_, scan_received_);
+                                *this->get_clock(), 
+                                5000, // Warn every 5 seconds
+                                "Waiting for data - Map: %d, Pose: %d, Scan: %d",
+                                map_received_, pose_received_, scan_received_);
             return;
         }
-        
-        last_valid_map_time = this->now();
 
         // Check exploration timeout
         double elapsed_time = (this->now() - start_time_).seconds();
@@ -364,6 +350,10 @@ private:
         }
 
         switch (current_state_) {
+            case INITIALIZING:
+                // Wait for data
+                break;
+
             case SCANNING: {
                 auto frontiers = detectFrontiers();
                 if (!frontiers.empty()) {
@@ -397,35 +387,51 @@ private:
                     RCLCPP_INFO(this->get_logger(), "Reached frontier, starting rotation");
                     current_state_ = ROTATING;
                     rotation_start_time_ = this->now();
-                } else {// Continue moving to frontier
+                    // Stop before starting rotation
+                    geometry_msgs::msg::Twist cmd_vel;
+                    cmd_vel_pub_->publish(cmd_vel);
+                } else {
                     moveToPoint(target_frontier_);
                 }
                 break;
             }
 
             case ROTATING: {
-                // Perform a 360-degree scan
-                geometry_msgs::msg::Twist cmd_vel;
-                cmd_vel.angular.z = this->get_parameter("angular_velocity").as_double();
-                cmd_vel_pub_->publish(cmd_vel);
-
-                // Check if we've completed the rotation (approximately 2π radians)
+                // Calculate remaining rotation time
                 auto rotation_duration = this->now() - rotation_start_time_;
-                double angular_velocity = this->get_parameter("angular_velocity").as_double();
-                double rotation_time = 2.0 * M_PI / angular_velocity;
+                double target_duration = this->get_parameter("rotation_duration").as_double();
+                double remaining_time = target_duration - rotation_duration.seconds();
                 
-                if (rotation_duration.seconds() > rotation_time) {
+                if (remaining_time > 0) {
+                    // Perform rotation with smooth velocity profile
+                    geometry_msgs::msg::Twist cmd_vel;
+                    double angular_velocity = this->get_parameter("angular_velocity").as_double();
+                    
+                    // Slow down near the end of rotation
+                    if (remaining_time < 2.0) {
+                        angular_velocity *= remaining_time / 2.0;
+                    }
+                    
+                    cmd_vel.angular.z = angular_velocity;
+                    cmd_vel_pub_->publish(cmd_vel);
+                    
+                    RCLCPP_DEBUG(this->get_logger(), "Rotating: %.1f seconds remaining", remaining_time);
+                } else {
                     RCLCPP_INFO(this->get_logger(), "Rotation complete, returning to scanning");
                     current_state_ = SCANNING;
+                    
                     // Stop rotation
                     geometry_msgs::msg::Twist stop_cmd;
                     cmd_vel_pub_->publish(stop_cmd);
+                    
+                    // Add a small delay before next scan
+                    rclcpp::sleep_for(std::chrono::milliseconds(500));
                 }
                 break;
             }
 
             case FINISHED: {
-                // Exploration is complete, robot should be stopped
+                // Keep robot stopped
                 geometry_msgs::msg::Twist cmd_vel;
                 cmd_vel_pub_->publish(cmd_vel);
                 break;
@@ -433,34 +439,41 @@ private:
         }
     }
 
+private:
     // Publishers and Subscribers
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    
+    // TF2 related members
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    
+    // Timers
     rclcpp::TimerBase::SharedPtr explore_timer_;
     rclcpp::TimerBase::SharedPtr status_timer_;
-    rclcpp::Time last_map_update_time_;
-
-
+    
     // State variables
     nav_msgs::msg::OccupancyGrid map_;
     nav_msgs::msg::Odometry current_pose_;
     sensor_msgs::msg::LaserScan latest_scan_;
+    
     bool map_received_ = false;
     bool pose_received_ = false;
     bool scan_received_ = false;
     ExplorationState current_state_;
     Point target_frontier_{0, 0};
-    rclcpp::Time rotation_start_time_;
     rclcpp::Time start_time_;
+    rclcpp::Time rotation_start_time_;
     std::string robot_name_;
     int min_frontier_size_;
 };
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<FrontierExplorer>());
+    auto node = std::make_shared<FrontierExplorer>();
+    rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
 }
