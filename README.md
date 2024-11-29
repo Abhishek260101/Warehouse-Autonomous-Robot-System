@@ -9,7 +9,7 @@
 ![CICD Workflow status](https://github.com/Abhishek260101/Warehouse-Autonomous-Robot-System/actions/workflows/run-unit-test-and-upload-codecov.yml/badge.svg) [![codecov](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System/graph/badge.svg?token=813CD16HJ6)](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System)[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
-This project implements a multi-robot mapping system using ROS2 Humble that enables two TurtleBot3 robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
+This project implements a multi-robot mapping system using ROS2 Humble that enables two carter robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
 
 ### Key Features
 - Frontier-based exploration algorithm for autonomous navigation
@@ -23,7 +23,6 @@ This project implements a multi-robot mapping system using ROS2 Humble that enab
 - Ubuntu 22.04
 - C++17 or higher
 - OpenCV 4.5+
-- TurtleBot3 packages for ROS2
 - Nav2
 - SLAM Toolbox
 - tf2_ros
@@ -87,50 +86,25 @@ ros2 run nav2_map_server map_saver_cli -f carter1_map --ros-args -r map:=/carter
 ros2 run nav2_map_server map_saver_cli -f carter2_map --ros-args -r map:=/carter2/map
 ```
 
-### Service Calls
-To start the exploration:
-```bash
-ros2 service call /tb3_0_start std_srvs/srv/Empty
-ros2 service call /tb3_1_start std_srvs/srv/Empty
-```
-
-### Visualization
-Monitor the exploration progress in RViz2:
-```bash
-ros2 launch multi_robot_exploration rviz.launch.py
-```
-
 ## Project Structure
 ```
-multi_robot_exploration/
-├── config/
-│   ├── frontier_params.yaml
-│   └── rviz_config.rviz
-├── include/
-│   └── multi_robot_exploration/
-│       ├── front_expl.hpp
-│       └── map_expansion.hpp
-├── launch/
-│   ├── bringup_robots.launch.py
-│   ├── frontier_exploration.launch.py
-│   └── multi_slam.launch.py
-├── src/
-│   ├── tb3_0_fe.cpp
-│   ├── tb3_1_fe.cpp
-│   └── map_expansion.cpp
-├── test/
-│   ├── test_frontier.cpp
-│   └── test_map_expansion.cpp
-└── package.xml
-```
+src/frontier_explorer/
+├── CMakeLists.txt
+├── config
+│   └── slam_toolbox_config.yaml
+├── include
+│   └── frontier_explorer
+│       ├── backup.hpp
+│       └── frontier_explorer.hpp
+├── launch
+│   ├── complete.launch.xml
+│   └── slam.launch.xml
+├── package.xml
+└── src
+    ├── backup.cpp
+    └── frontier_explorer.cpp
 
-## Documentation
-Generate documentation using Doxygen:
-```bash
-cd ~/ros2_ws/src/multi_robot_exploration
-doxygen Doxyfile
 ```
-Access the documentation at `docs/html/index.html`
 
 ## Testing
 Run the tests:
@@ -195,17 +169,10 @@ This implementation takes advantage of ROS2 features including:
 - Action servers for long-running tasks
 - Modern C++ features and ROS2 best practices
 
-## Environment Variables
-Make sure to set these environment variables:
-```bash
-export TURTLEBOT3_MODEL=waffle_pi
-export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/opt/ros/humble/share/turtlebot3_gazebo/models
-```
 
 ## Acknowledgments
 - ROS2 Community
-- TurtleBot3 Development Team
-- [Your University/Organization Name]
+- NVidia community
 
 ## Troubleshooting
 Common issues and solutions:
