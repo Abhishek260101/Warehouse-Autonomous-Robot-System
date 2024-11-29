@@ -13,6 +13,8 @@ FrontierExplorer::FrontierExplorer()
     // Get robot namespace parameter - don't declare it, just get it
     robot_namespace_ = this->get_parameter("robot_namespace").as_string();
     
+    map_frame_ = this->get_parameter("map_frame").as_string();
+
     RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer initialization for %s", robot_namespace_.c_str());
     
     // Get use_sim_time parameter
@@ -88,7 +90,7 @@ void FrontierExplorer::find_frontiers(const sensor_msgs::msg::LaserScan::SharedP
         }
 
         auto transform = tf_buffer_->lookupTransform(
-            "map", base_frame,
+            map_frame_, base_frame,  // Changed from "map" to map_frame_
             this->now(),
             rclcpp::Duration::from_seconds(1.0));
             
