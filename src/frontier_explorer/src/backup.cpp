@@ -8,20 +8,14 @@
 FrontierExplorer::FrontierExplorer()
 : Node("frontier_explorer", rclcpp::NodeOptions()
     .automatically_declare_parameters_from_overrides(true)
-    .allow_undeclared_parameters(false)),
-    last_goal_change_(this->get_clock()->now()),
-    has_goal_(false),
-    rotate_left_(true),
-    stuck_counter_(0),
-    last_goal_x_(0.0),
-    last_goal_y_(0.0),
-    last_turned_left_(false),
-    first_turn_(true),
-    last_turn_time_(this->now())    
+    .allow_undeclared_parameters(false))  
 {
-    RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer initialization");
+    // Get robot namespace parameter - don't declare it, just get it
+    robot_namespace_ = this->get_parameter("robot_namespace").as_string();
     
-    // Get use_sim_time parameter (should be already declared via launch file)
+    RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer initialization for %s", robot_namespace_.c_str());
+    
+    // Get use_sim_time parameter
     bool use_sim_time = this->get_parameter("use_sim_time").as_bool();
     RCLCPP_INFO(this->get_logger(), "Using sim time: %s", use_sim_time ? "true" : "false");
     
@@ -29,265 +23,192 @@ FrontierExplorer::FrontierExplorer()
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     
-    // Initialize subscribers
+    // Build topic names using robot namespace
+    std::string lidar_topic = "/" + robot_namespace_ + "/front_3d_lidar/lidar_points";
+    std::string cmd_vel_topic = "/" + robot_namespace_ + "/cmd_vel";
+    
+    // Initialize subscribers with exact topic names
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        "/carter1/front_3d_lidar/lidar_points", 10,
+        lidar_topic, 10,
         std::bind(&FrontierExplorer::scan_callback, this, std::placeholders::_1));
         
     // Initialize publishers
     cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
-        "/carter1/cmd_vel", 10);
+        cmd_vel_topic, 10);
         
-    // Initialize timer for exploration with a slower rate
+    // Initialize timer for exploration
     timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(500),  // 2Hz instead of 1Hz
+        std::chrono::milliseconds(500),
         std::bind(&FrontierExplorer::exploration_callback, this));
         
-    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialization complete");
+    RCLCPP_INFO(this->get_logger(), "Frontier Explorer initialization complete for %s", robot_namespace_.c_str());
 }
 
 void FrontierExplorer::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
     current_scan_ = msg;
 
-    // Set the correct frame_id if it's not already set
+    // Update frame_id to match robot namespace
     if (current_scan_->header.frame_id.empty() || 
-        current_scan_->header.frame_id == "carter1/front_3d_lidar") {
-        current_scan_->header.frame_id = "front_3d_lidar";
+        current_scan_->header.frame_id == robot_namespace_ + "/front_3d_lidar") {
+        current_scan_->header.frame_id = robot_namespace_ + "/front_3d_lidar";
     }
 
     RCLCPP_DEBUG(this->get_logger(), 
-                "Received scan with %zu ranges [min: %.2f, max: %.2f] in frame %s", 
+                "[%s] Received scan with %zu ranges [min: %.2f, max: %.2f] in frame %s", 
+                robot_namespace_.c_str(),
                 msg->ranges.size(),
                 msg->range_min,
                 msg->range_max,
                 msg->header.frame_id.c_str());
 }
 
-bool FrontierExplorer::waitForMap(const rclcpp::Duration& timeout)
+void FrontierExplorer::find_frontiers(const sensor_msgs::msg::LaserScan::SharedPtr& scan)
 {
-    auto start_time = this->now();
-    while (rclcpp::ok()) {
-        if (tf_buffer_->_frameExists("map")) {
-            RCLCPP_INFO(this->get_logger(), "Map frame became available");
-            return true;
-        }
-        if ((this->now() - start_time) > timeout) {
-            RCLCPP_WARN(this->get_logger(), "Timeout waiting for map frame");
-            return false;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!scan) {
+        RCLCPP_WARN(this->get_logger(), "[%s] Received null scan", robot_namespace_.c_str());
+        return;
     }
-    return false;
-}
 
-std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
-    const sensor_msgs::msg::LaserScan::SharedPtr& scan)
-{
-    std::vector<std::pair<double, double>> frontiers;
-    
-    if (!tf_buffer_->_frameExists("map")) {
-        if (!waitForMap(rclcpp::Duration::from_seconds(5.0))) {
-            return frontiers;
-        }
-    }
-    
     try {
-        rclcpp::Time transform_time = this->get_parameter("use_sim_time").as_bool() ?
-            rclcpp::Time(scan->header.stamp) : this->now();
+        // Use exact frame names from TF
+        std::string base_frame = "base_link";
+        std::string odom_frame = "odom";
 
-        // Get robot's transform
+        // First check transform between odom and base_link
+        if (!tf_buffer_->canTransform(odom_frame, base_frame, tf2::TimePointZero)) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), 
+                                *this->get_clock(),
+                                1000,
+                                "[%s] Cannot transform between %s and %s", 
+                                robot_namespace_.c_str(), 
+                                odom_frame.c_str(), 
+                                base_frame.c_str());
+            return;
+        }
+
         auto transform = tf_buffer_->lookupTransform(
-            "map", "base_link", 
-            transform_time,
+            "map", base_frame,
+            this->now(),
             rclcpp::Duration::from_seconds(1.0));
             
         double robot_yaw = tf2::getYaw(transform.transform.rotation);
         
-        // Check forward path for immediate obstacles
+        // Scan ±30° arc for obstacles
+        bool path_blocked = false;
         double min_front_distance = std::numeric_limits<double>::max();
-        bool imminent_collision = false;
         
-        // Check -15° to +15° for obstacles within 0.5 meters
-        for (size_t i = 0; i < scan->ranges.size(); i++) {
-            double angle = scan->angle_min + i * scan->angle_increment;
-            if (angle >= -M_PI/12 && angle <= M_PI/12) {  // ±15 degrees
-                if (std::isfinite(scan->ranges[i])) {
-                    min_front_distance = std::min(min_front_distance, static_cast<double>(scan->ranges[i]));
-                    if (scan->ranges[i] < 0.5) {
-                        imminent_collision = true;
+        size_t front_start_idx = (size_t)(((-M_PI/6) - scan->angle_min) / scan->angle_increment);
+        size_t front_end_idx = (size_t)((M_PI/6 - scan->angle_min) / scan->angle_increment);
+        
+        int valid_readings = 0;
+        double sum_front_distance = 0.0;
+        
+        for (size_t i = front_start_idx; i <= front_end_idx && i < scan->ranges.size(); i++) {
+            if (std::isfinite(scan->ranges[i]) && 
+                scan->ranges[i] > scan->range_min && 
+                scan->ranges[i] < scan->range_max) {
+                valid_readings++;
+                sum_front_distance += scan->ranges[i];
+                min_front_distance = std::min(min_front_distance, static_cast<double>(scan->ranges[i]));
+                if (scan->ranges[i] < 1.2) {  // 1.2m safety distance
+                    path_blocked = true;
+                }
+            }
+        }
+        
+        if (valid_readings < 5) {
+            path_blocked = true;
+            min_front_distance = valid_readings > 0 ? sum_front_distance / valid_readings : 0.0;
+        }
+
+        geometry_msgs::msg::Twist cmd;
+        static std::map<std::string, rclcpp::Time> last_direction_changes;
+        static std::map<std::string, double> current_turn_directions;
+        
+        // Initialize robot-specific state if needed
+        if (last_direction_changes.find(robot_namespace_) == last_direction_changes.end()) {
+            last_direction_changes[robot_namespace_] = this->now();
+            current_turn_directions[robot_namespace_] = 1.0;
+        }
+        
+        if (path_blocked) {
+            cmd.linear.x = 0.0;
+            
+            double best_direction = 0.0;
+            double max_clearance = 0.0;
+            
+            for (double angle = -M_PI; angle <= M_PI; angle += M_PI/6) {
+                size_t idx = (size_t)((angle - scan->angle_min) / scan->angle_increment);
+                if (idx < scan->ranges.size()) {
+                    double distance = 0.0;
+                    int valid_counts = 0;
+                    
+                    for (int offset = -2; offset <= 2; offset++) {
+                        size_t check_idx = idx + offset;
+                        if (check_idx < scan->ranges.size() && 
+                            std::isfinite(scan->ranges[check_idx]) &&
+                            scan->ranges[check_idx] > scan->range_min &&
+                            scan->ranges[check_idx] < scan->range_max) {
+                            distance += scan->ranges[check_idx];
+                            valid_counts++;
+                        }
+                    }
+                    
+                    if (valid_counts > 0) {
+                        distance /= valid_counts;
+                        if (distance > max_clearance) {
+                            max_clearance = distance;
+                            best_direction = angle;
+                        }
                     }
                 }
             }
-        }
-        
-        // If no imminent collision, set frontier point straight ahead
-        if (!imminent_collision) {
-            double forward_distance = 5.0;  // Look 2 meters ahead
-            double goal_x = transform.transform.translation.x + 
-                forward_distance * cos(robot_yaw);
-            double goal_y = transform.transform.translation.y + 
-                forward_distance * sin(robot_yaw);
-                
-            frontiers.push_back({goal_x, goal_y});
-            RCLCPP_INFO(this->get_logger(), "Path clear, moving forward. Nearest obstacle: %.2f m", min_front_distance);
-            return frontiers;
-        }
-        
-        // If obstacle detected, check left and right for clearance
-        double left_min = std::numeric_limits<double>::max();
-        double right_min = std::numeric_limits<double>::max();
-        
-        for (size_t i = 0; i < scan->ranges.size(); i++) {
-            double angle = scan->angle_min + i * scan->angle_increment;
-            if (std::isfinite(scan->ranges[i])) {
-                if (angle > 0 && angle <= M_PI/6) {  // 0° to 30° (right)
-                    right_min = std::min(right_min, static_cast<double>(scan->ranges[i]));
-                } else if (angle < 0 && angle >= -M_PI/6) {  // -30° to 0° (left)
-                    left_min = std::min(left_min, static_cast<double>(scan->ranges[i]));
+            
+            auto time_since_change = this->now() - last_direction_changes[robot_namespace_];
+            if (time_since_change.seconds() > 1.0) {
+                if (best_direction != 0.0) {
+                    current_turn_directions[robot_namespace_] = best_direction > 0 ? 1.0 : -1.0;
+                    last_direction_changes[robot_namespace_] = this->now();
                 }
             }
-        }
-        
-        // Turn in the direction with more space
-        double turn_angle;
-        if (left_min > right_min && left_min > 0.5) {
-            turn_angle = M_PI/9;  // 20 degrees left
-            RCLCPP_INFO(this->get_logger(), "Obstacle close (%.2f m), turning left", min_front_distance);
-        } else if (right_min > 0.5) {
-            turn_angle = -M_PI/9;  // 20 degrees right
-            RCLCPP_INFO(this->get_logger(), "Obstacle close (%.2f m), turning right", min_front_distance);
-        } else {
-            // Both sides blocked, turn more sharply
-            turn_angle = (left_min > right_min) ? M_PI/4 : -M_PI/4;  // 45 degrees
-            RCLCPP_INFO(this->get_logger(), "Confined space, sharp turn %s", (left_min > right_min) ? "left" : "right");
-        }
-        
-        double turn_distance = 2.0;  // 1 meter ahead after turn
-        double goal_x = transform.transform.translation.x + 
-            turn_distance * cos(robot_yaw + turn_angle);
-        double goal_y = transform.transform.translation.y + 
-            turn_distance * sin(robot_yaw + turn_angle);
             
-        frontiers.push_back({goal_x, goal_y});
-        
-    } catch (tf2::TransformException& ex) {
-        RCLCPP_WARN(this->get_logger(), "Transform error: %s", ex.what());
-    }
-    
-    return frontiers;
-}
-
-void FrontierExplorer::move_to_frontier(const std::pair<double, double>& frontier)
-{
-    try {
-        rclcpp::Time transform_time = this->get_parameter("use_sim_time").as_bool() ?
-            this->now() : this->now();
+            cmd.angular.z = 0.5 * current_turn_directions[robot_namespace_];
             
-        auto transform = tf_buffer_->lookupTransform(
-            "map", "base_link", 
-            transform_time,
-            rclcpp::Duration::from_seconds(1.0));
-
-        geometry_msgs::msg::Twist cmd;
-        
-        // Calculate relative position of frontier
-        double dx = frontier.first - transform.transform.translation.x;
-        double dy = frontier.second - transform.transform.translation.y;
-        double distance = std::sqrt(dx*dx + dy*dy);
-        
-        // Calculate angle to target
-        double target_angle = std::atan2(dy, dx);
-        double current_angle = tf2::getYaw(transform.transform.rotation);
-        double angle_diff = target_angle - current_angle;
-        
-        // Normalize angle
-        while (angle_diff > M_PI) angle_diff -= 2*M_PI;
-        while (angle_diff < -M_PI) angle_diff += 2*M_PI;
-
-        if (distance < 0.1) {  // Goal reached threshold
-            cmd.linear.x = 0.0;
-            cmd.angular.z = 0.0;
-            has_goal_ = false;
+            RCLCPP_INFO(this->get_logger(), 
+                "[%s] Obstacle detected at %.2fm. Turning %s", 
+                robot_namespace_.c_str(),
+                min_front_distance,
+                current_turn_directions[robot_namespace_] > 0 ? "right" : "left");
+            
         } else {
-            // Proportional control for smooth movement
-            if (std::abs(angle_diff) > 0.1) {  // 0.1 radians ≈ 5.7 degrees
-                // Turn to face target
-                cmd.linear.x = 0.0;
-                cmd.angular.z = std::copysign(std::min(0.5, std::abs(angle_diff)), angle_diff);
-            } else {
-                // Move towards target
-                cmd.linear.x = std::min(0.2, distance);
-                cmd.angular.z = 0.2 * angle_diff;  // Small corrections while moving
-            }
+            cmd.linear.x = 0.2;
+            double random_turn = (rand() % 100 - 50) / 1000.0;
+            cmd.angular.z = random_turn;
+            
+            RCLCPP_INFO(this->get_logger(), 
+                "[%s] Path clear. Moving forward. Distance to nearest obstacle: %.2fm",
+                robot_namespace_.c_str(),
+                min_front_distance);
         }
         
         cmd_vel_pub_->publish(cmd);
         
     } catch (tf2::TransformException& ex) {
-        RCLCPP_WARN(this->get_logger(), "Could not transform robot pose: %s", ex.what());
+        RCLCPP_WARN(this->get_logger(), "[%s] Transform error: %s", 
+                    robot_namespace_.c_str(), ex.what());
     }
 }
 
 void FrontierExplorer::exploration_callback()
 {
     if (!current_scan_) {
-        RCLCPP_DEBUG(this->get_logger(), "No laser scan data received yet");
+        RCLCPP_DEBUG(this->get_logger(), "[%s] No laser scan data received yet", 
+                     robot_namespace_.c_str());
         return;
     }
     
-    frontiers_ = find_frontiers(current_scan_);
-    
-    if (frontiers_.empty()) {
-        geometry_msgs::msg::Twist cmd;
-        cmd.angular.z = ROTATION_SPEED;
-        cmd_vel_pub_->publish(cmd);
-        has_goal_ = false;
-        RCLCPP_DEBUG(this->get_logger(), "No frontiers found, rotating to scan");
-        return;
-    }
-    
-    if (!has_goal_) {
-        try {
-            // Get transform at latest available time
-            auto transform = tf_buffer_->lookupTransform(
-                "map",
-                "base_link",
-                this->get_clock()->now(),  // Current time
-                rclcpp::Duration::from_seconds(1.0));
-                                     
-            double robot_x = transform.transform.translation.x;
-            double robot_y = transform.transform.translation.y;
-            
-            // Find closest frontier
-            double min_dist = std::numeric_limits<double>::max();
-            size_t closest_idx = 0;
-            
-            for (size_t i = 0; i < frontiers_.size(); ++i) {
-                double dx = frontiers_[i].first - robot_x;
-                double dy = frontiers_[i].second - robot_y;
-                double dist = std::sqrt(dx*dx + dy*dy);
-                
-                if (dist < min_dist) {
-                    min_dist = dist;
-                    closest_idx = i;
-                }
-            }
-            
-            current_goal_ = frontiers_[closest_idx];
-            has_goal_ = true;
-            
-            RCLCPP_INFO(this->get_logger(), "New goal selected at (%f, %f), distance: %f",
-                       current_goal_.first, current_goal_.second, min_dist);
-            
-        } catch (tf2::TransformException& ex) {
-            RCLCPP_WARN(this->get_logger(), "Could not get robot position: %s", ex.what());
-        }
-    }
-    
-    if (has_goal_) {
-        move_to_frontier(current_goal_);
-    }
+    find_frontiers(current_scan_);
 }
 
 int main(int argc, char** argv)

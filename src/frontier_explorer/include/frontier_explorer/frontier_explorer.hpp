@@ -6,6 +6,8 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <map>
+#include <string>
 
 class FrontierExplorer : public rclcpp::Node {
 public:
@@ -15,6 +17,7 @@ private:
     void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
     void exploration_callback();
     void find_frontiers(const sensor_msgs::msg::LaserScan::SharedPtr& scan);
+    bool waitForMap(const rclcpp::Duration& timeout);  // Added waitForMap declaration
 
     // TF2 members
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -27,6 +30,9 @@ private:
 
     // Current sensor data
     sensor_msgs::msg::LaserScan::SharedPtr current_scan_;
+
+    // Robot namespace and parameters
+    std::string robot_namespace_;  // Added robot_namespace_ declaration
 };
 
 #endif // FRONTIER_EXPLORER_HPP
