@@ -33,6 +33,9 @@ private:
 
     // Robot namespace and parameters
     std::string robot_namespace_;  // Added robot_namespace_ declaration
+
+    std::string map_frame_;  // Added for robot-specific map frame
+
 };
 
 #endif // FRONTIER_EXPLORER_HPP
