@@ -8,8 +8,7 @@
 FrontierExplorer::FrontierExplorer()
 : Node("frontier_explorer", rclcpp::NodeOptions()
     .automatically_declare_parameters_from_overrides(true)
-    .allow_undeclared_parameters(false)),
-    has_goal_(false)
+    .allow_undeclared_parameters(false))  
 {
     RCLCPP_INFO(this->get_logger(), "Starting Frontier Explorer initialization");
     
@@ -56,223 +55,127 @@ void FrontierExplorer::scan_callback(const sensor_msgs::msg::LaserScan::SharedPt
                 msg->header.frame_id.c_str());
 }
 
-bool FrontierExplorer::waitForMap(const rclcpp::Duration& timeout)
+
+void FrontierExplorer::find_frontiers(const sensor_msgs::msg::LaserScan::SharedPtr& scan)
 {
-    auto start_time = this->now();
-    while (rclcpp::ok()) {
-        if (tf_buffer_->_frameExists("map")) {
-            RCLCPP_INFO(this->get_logger(), "Map frame became available");
-            return true;
-        }
-        if ((this->now() - start_time) > timeout) {
-            RCLCPP_WARN(this->get_logger(), "Timeout waiting for map frame");
-            return false;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!scan) {
+        RCLCPP_WARN(this->get_logger(), "Received null scan");
+        return;
     }
-    return false;
-}
 
-std::vector<std::pair<double, double>> FrontierExplorer::find_frontiers(
-    const sensor_msgs::msg::LaserScan::SharedPtr& scan)
-{
-    std::vector<std::pair<double, double>> frontiers;
-    
-    // First check if map exists
-    if (!tf_buffer_->_frameExists("map")) {
-        if (!waitForMap(rclcpp::Duration::from_seconds(5.0))) {
-            RCLCPP_DEBUG(this->get_logger(), "Still waiting for map frame...");
-            return frontiers;
-        }
-    }
-    
-    try {
-        rclcpp::Time transform_time;
-        
-        // Use appropriate timestamp
-        if (this->get_parameter("use_sim_time").as_bool()) {
-            transform_time = rclcpp::Time(scan->header.stamp);
-        } else {
-            transform_time = this->now();
-        }
-
-        // Check transform availability
-        if (!tf_buffer_->canTransform(
-            "map",
-            "front_3d_lidar",
-            transform_time,
-            rclcpp::Duration::from_seconds(1.0)))
-        {
-            RCLCPP_DEBUG(this->get_logger(), 
-                "Transform not available for time %f", 
-                transform_time.seconds());
-            return frontiers;
-        }
-
-        // Get transform from laser to map frame
-        geometry_msgs::msg::TransformStamped transform = 
-            tf_buffer_->lookupTransform(
-                "map",
-                "front_3d_lidar",
-                transform_time,
-                rclcpp::Duration::from_seconds(1.0));
-        
-        std::vector<std::pair<double, double>> points;
-        std::vector<std::pair<double, double>> obstacles;
-        double angle = scan->angle_min;
-        int valid_points = 0;
-        
-        // Convert scan to points, limiting to -45° to +45°
-        for (size_t i = 0; i < scan->ranges.size(); i++) {
-            if (angle >= -M_PI/4 && angle <= M_PI/4) {  // -45° to +45°
-                const auto& r = scan->ranges[i];
-                if (std::isfinite(r) && r >= scan->range_min && r <= scan->range_max) {
-                    // Convert to point in laser frame
-                    geometry_msgs::msg::PointStamped point_laser;
-                    point_laser.header = scan->header;
-                    point_laser.point.x = r * cos(angle);
-                    point_laser.point.y = r * sin(angle);
-                    point_laser.point.z = 0.0;
-                    
-                    // Transform to map frame
-                    geometry_msgs::msg::PointStamped point_map;
-                    tf2::doTransform(point_laser, point_map, transform);
-                    
-                    points.push_back({point_map.point.x, point_map.point.y});
-                    
-                    // Track obstacles (points closer than safe distance)
-                    if (r < 1.0) {  // 1 meter safe distance
-                        obstacles.push_back({point_map.point.x, point_map.point.y});
-                    }
-                    
-                    valid_points++;
-                }
-            }
-            angle += scan->angle_increment;
-        }
-        
-        RCLCPP_DEBUG(this->get_logger(), "Processed %d valid points", valid_points);
-        
-        // Find gaps between points that could be frontiers
-        if (points.size() >= 2) {
-            for (size_t i = 0; i < points.size() - 1; ++i) {
-                double dx = points[i+1].first - points[i].first;
-                double dy = points[i+1].second - points[i].second;
-                double distance = std::sqrt(dx*dx + dy*dy);
-                
-                if (distance > GAP_THRESHOLD) {
-                    double frontier_x = (points[i+1].first + points[i].first) / 2.0;
-                    double frontier_y = (points[i+1].second + points[i].second) / 2.0;
-                    
-                    // Check if frontier is accessible
-                    bool is_accessible = true;
-                    
-                    // Check distance from obstacles
-                    for (const auto& obstacle : obstacles) {
-                        double obs_dx = frontier_x - obstacle.first;
-                        double obs_dy = frontier_y - obstacle.second;
-                        double obs_dist = std::sqrt(obs_dx*obs_dx + obs_dy*obs_dy);
-                        
-                        if (obs_dist < 1.0) {  // Too close to obstacle
-                            is_accessible = false;
-                            break;
-                        }
-                    }
-                    
-                    // Check if this frontier is too close to existing frontiers
-                    for (const auto& existing : frontiers) {
-                        double f_dx = frontier_x - existing.first;
-                        double f_dy = frontier_y - existing.second;
-                        double f_dist = std::sqrt(f_dx*f_dx + f_dy*f_dy);
-                        
-                        if (f_dist < 0.5) {  // Too close to existing frontier
-                            is_accessible = false;
-                            break;
-                        }
-                    }
-                    
-                    // Only add accessible frontiers
-                    if (is_accessible) {
-                        frontiers.push_back({frontier_x, frontier_y});
-                        RCLCPP_DEBUG(this->get_logger(), 
-                            "Found frontier at (%f, %f)", frontier_x, frontier_y);
-                    }
-                }
-            }
-        }
-        
-    } catch (tf2::TransformException& ex) {
-        RCLCPP_WARN(this->get_logger(), "Transform error: %s", ex.what());
-    }
-    
-    return frontiers;
-}
-
-void FrontierExplorer::move_to_frontier(const std::pair<double, double>& frontier)
-{
     try {
         auto transform = tf_buffer_->lookupTransform(
             "map", "base_link", 
-            this->get_clock()->now(),
+            this->now(),
             rclcpp::Duration::from_seconds(1.0));
+            
+        double robot_yaw = tf2::getYaw(transform.transform.rotation);
+        
+        // Increased forward arc to ±30° (from ±15°)
+        bool path_blocked = false;
+        double min_front_distance = std::numeric_limits<double>::max();
+        
+        size_t front_start_idx = (size_t)(((-M_PI/6) - scan->angle_min) / scan->angle_increment);
+        size_t front_end_idx = (size_t)((M_PI/6 - scan->angle_min) / scan->angle_increment);
+        
+        // Count valid readings
+        int valid_readings = 0;
+        double sum_front_distance = 0.0;
+        
+        for (size_t i = front_start_idx; i <= front_end_idx && i < scan->ranges.size(); i++) {
+            if (std::isfinite(scan->ranges[i]) && scan->ranges[i] > scan->range_min && scan->ranges[i] < scan->range_max) {
+                valid_readings++;
+                sum_front_distance += scan->ranges[i];
+                min_front_distance = std::min(min_front_distance, static_cast<double>(scan->ranges[i]));
+                if (scan->ranges[i] < 1.2) {  // Increased safety distance from 0.8m to 1.2m
+                    path_blocked = true;
+                }
+            }
+        }
+        
+        // If we don't have enough valid readings, consider path blocked
+        if (valid_readings < 5) {
+            path_blocked = true;
+            min_front_distance = valid_readings > 0 ? sum_front_distance / valid_readings : 0.0;
+        }
 
         geometry_msgs::msg::Twist cmd;
-        bool obstacle_detected = false;
-        double min_front_dist = std::numeric_limits<double>::max();
-
-        if (current_scan_) {
-            // Check front sector for obstacles
-            double angle = SCAN_ANGLE_MIN;
-            for (size_t i = 0; i < current_scan_->ranges.size(); i++) {
-                if (angle >= SCAN_ANGLE_MIN && angle <= SCAN_ANGLE_MAX) {
-                    if (std::isfinite(current_scan_->ranges[i])) {
-                        min_front_dist = std::min(min_front_dist, 
-                            static_cast<double>(current_scan_->ranges[i]));
+        static rclcpp::Time last_direction_change = this->now();
+        static double current_turn_direction = 1.0;  // 1.0 for right, -1.0 for left
+        
+        if (path_blocked) {
+            // Stop forward motion when obstacle detected
+            cmd.linear.x = 0.0;
+            
+            // Scan surroundings in 30-degree increments to reduce oscillation
+            double best_direction = 0.0;
+            double max_clearance = 0.0;
+            
+            // Check both left and right sides with wider angles
+            for (double angle = -M_PI; angle <= M_PI; angle += M_PI/6) {  // 30-degree increments
+                size_t idx = (size_t)((angle - scan->angle_min) / scan->angle_increment);
+                if (idx < scan->ranges.size()) {
+                    double distance = 0.0;
+                    int valid_counts = 0;
+                    
+                    // Average over a small window to get more stable readings
+                    for (int offset = -2; offset <= 2; offset++) {
+                        size_t check_idx = idx + offset;
+                        if (check_idx < scan->ranges.size() && 
+                            std::isfinite(scan->ranges[check_idx]) &&
+                            scan->ranges[check_idx] > scan->range_min &&
+                            scan->ranges[check_idx] < scan->range_max) {
+                            distance += scan->ranges[check_idx];
+                            valid_counts++;
+                        }
+                    }
+                    
+                    if (valid_counts > 0) {
+                        distance /= valid_counts;
+                        if (distance > max_clearance) {
+                            max_clearance = distance;
+                            best_direction = angle;
+                        }
                     }
                 }
-                angle += current_scan_->angle_increment;
-                if (angle > SCAN_ANGLE_MAX) break;
             }
-
-            obstacle_detected = min_front_dist < 1.0;
-        }
-
-        double dx = frontier.first - transform.transform.translation.x;
-        double dy = frontier.second - transform.transform.translation.y;
-        double distance = std::sqrt(dx*dx + dy*dy);
-        
-        if (distance < GOAL_REACHED_THRESHOLD) {
-            has_goal_ = false;
-            cmd.linear.x = cmd.angular.z = 0.0;
-        } else if (obstacle_detected) {
-            has_goal_ = false;  // Force new goal selection
-            cmd.linear.x = -0.1;  // Back up slightly
-            cmd.angular.z = 0.3;  // Turn to find new path
-        } else {
-            double robot_yaw = tf2::getYaw(transform.transform.rotation);
-            double target_angle = std::atan2(dy, dx);
-            double angle_diff = target_angle - robot_yaw;
             
-            // Normalize angle
-            while (angle_diff > M_PI) angle_diff -= 2*M_PI;
-            while (angle_diff < -M_PI) angle_diff += 2*M_PI;
-
-            if (std::abs(angle_diff) > 0.1) {
-                cmd.linear.x = 0.0;
-                cmd.angular.z = 0.3 * angle_diff;
-            } else {
-                cmd.linear.x = 0.2;
-                cmd.angular.z = 0.1 * angle_diff;  // Small correction while moving
+            // Prevent rapid direction changes by maintaining direction for at least 1 second
+            auto time_since_change = this->now() - last_direction_change;
+            if (time_since_change.seconds() > 1.0) {
+                if (best_direction != 0.0) {
+                    current_turn_direction = best_direction > 0 ? 1.0 : -1.0;
+                    last_direction_change = this->now();
+                }
             }
+            
+            // Use the maintained direction with a fixed turning speed
+            cmd.angular.z = 0.5 * current_turn_direction;
+            
+            RCLCPP_INFO(this->get_logger(), 
+                "Obstacle detected at %.2fm. Turning %s", 
+                min_front_distance,
+                current_turn_direction > 0 ? "right" : "left");
+            
+        } else {
+            // Path is clear - move forward with slight random exploration
+            cmd.linear.x = 0.2;  // Reduced speed for safety
+            
+            // Add small random rotation for exploration
+            double random_turn = (rand() % 100 - 50) / 1000.0;  // Reduced random factor
+            cmd.angular.z = random_turn;
+            
+            RCLCPP_INFO(this->get_logger(), 
+                "Path clear. Moving forward. Distance to nearest obstacle: %.2fm",
+                min_front_distance);
         }
-
+        
         cmd_vel_pub_->publish(cmd);
-
+        
     } catch (tf2::TransformException& ex) {
         RCLCPP_WARN(this->get_logger(), "Transform error: %s", ex.what());
     }
 }
-
 
 void FrontierExplorer::exploration_callback()
 {
@@ -281,58 +184,7 @@ void FrontierExplorer::exploration_callback()
         return;
     }
     
-    frontiers_ = find_frontiers(current_scan_);
-    
-    if (frontiers_.empty()) {
-        geometry_msgs::msg::Twist cmd;
-        cmd.angular.z = ROTATION_SPEED;
-        cmd_vel_pub_->publish(cmd);
-        has_goal_ = false;
-        RCLCPP_DEBUG(this->get_logger(), "No frontiers found, rotating to scan");
-        return;
-    }
-    
-    if (!has_goal_) {
-        try {
-            // Get transform at latest available time
-            auto transform = tf_buffer_->lookupTransform(
-                "map",
-                "base_link",
-                this->get_clock()->now(),  // Current time
-                rclcpp::Duration::from_seconds(1.0));
-                                     
-            double robot_x = transform.transform.translation.x;
-            double robot_y = transform.transform.translation.y;
-            
-            // Find closest frontier
-            double min_dist = std::numeric_limits<double>::max();
-            size_t closest_idx = 0;
-            
-            for (size_t i = 0; i < frontiers_.size(); ++i) {
-                double dx = frontiers_[i].first - robot_x;
-                double dy = frontiers_[i].second - robot_y;
-                double dist = std::sqrt(dx*dx + dy*dy);
-                
-                if (dist < min_dist) {
-                    min_dist = dist;
-                    closest_idx = i;
-                }
-            }
-            
-            current_goal_ = frontiers_[closest_idx];
-            has_goal_ = true;
-            
-            RCLCPP_INFO(this->get_logger(), "New goal selected at (%f, %f), distance: %f",
-                       current_goal_.first, current_goal_.second, min_dist);
-            
-        } catch (tf2::TransformException& ex) {
-            RCLCPP_WARN(this->get_logger(), "Could not get robot position: %s", ex.what());
-        }
-    }
-    
-    if (has_goal_) {
-        move_to_frontier(current_goal_);
-    }
+    find_frontiers(current_scan_);
 }
 
 int main(int argc, char** argv)
