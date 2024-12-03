@@ -1,3 +1,4 @@
+// Include necessary headers
 #include <gtest/gtest.h>
 #include <rclcpp/rclcpp.hpp>
 #include "frontier_explorer/frontier_explorer.hpp"
@@ -7,14 +8,22 @@
 #include <memory>
 #include <vector>
 
+/**
+ * Test fixture class for FrontierExplorer testing
+ */
 class TestFrontierExplorer : public ::testing::Test {
 protected:
+    /**
+     * Set up test environment before each test
+     * Initializes ROS2, creates node with parameters
+     */
     void SetUp() override {
         rclcpp::init(0, nullptr);
 
         rclcpp::NodeOptions options;
         options.automatically_declare_parameters_from_overrides(true);
         
+        // Set up test parameters
         std::vector<rclcpp::Parameter> params = {
             rclcpp::Parameter("robot_namespace", "robot1"),
             rclcpp::Parameter("use_sim_time", false),
@@ -27,11 +36,18 @@ protected:
         setupTransforms();
     }
 
+    /**
+     * Clean up after each test
+     */
     void TearDown() override {
         node_.reset();
         rclcpp::shutdown();
     }
 
+    /**
+     * Set up default laser scan message for testing
+     * Creates a scan with 90 degree FOV and 5m range readings
+     */
     void setupDefaultScan() {
         default_scan_ = std::make_shared<sensor_msgs::msg::LaserScan>();
         default_scan_->header.frame_id = "robot1/front_3d_lidar";
@@ -45,6 +61,10 @@ protected:
         default_scan_->header.stamp = node_->now();
     }
 
+    /**
+     * Set up test transforms
+     * Creates a static transform from map to base_link
+     */
     void setupTransforms() {
         geometry_msgs::msg::TransformStamped transform;
         transform.header.stamp = node_->now();
@@ -54,20 +74,32 @@ protected:
         node_->get_tf_buffer()->setTransform(transform, "test_authority", true);
     }
 
+    /**
+     * Helper to process callbacks
+     */
     void spin_some() {
         rclcpp::spin_some(node_);
     }
 
+    // Test fixture members
     std::shared_ptr<FrontierExplorer> node_;
     sensor_msgs::msg::LaserScan::SharedPtr default_scan_;
 };
 
+/**
+ * Test basic node initialization
+ * Verifies node name and parameters are set correctly
+ */
 TEST_F(TestFrontierExplorer, TestNodeInitialization) {
     EXPECT_EQ(std::string(node_->get_name()), "frontier_explorer");
     EXPECT_EQ(node_->get_robot_namespace(), "robot1");
     EXPECT_EQ(node_->get_map_frame(), "map");
 }
 
+/**
+ * Test laser scan processing
+ * Verifies scan callback properly stores scan data
+ */
 TEST_F(TestFrontierExplorer, TestScanProcessing) {
     node_->scan_callback(default_scan_);
     spin_some();
@@ -77,6 +109,10 @@ TEST_F(TestFrontierExplorer, TestScanProcessing) {
     EXPECT_EQ(current_scan->header.frame_id, "robot1/front_3d_lidar");
 }
 
+/**
+ * Test obstacle detection with single obstacle
+ * Verifies node handles single obstacle case
+ */
 TEST_F(TestFrontierExplorer, TestObstacleDetection) {
     auto obstacle_scan = std::make_shared<sensor_msgs::msg::LaserScan>(*default_scan_);
     obstacle_scan->ranges[45] = 0.5f;  // Add obstacle in center
@@ -88,6 +124,10 @@ TEST_F(TestFrontierExplorer, TestObstacleDetection) {
     });
 }
 
+/**
+ * Test handling of multiple obstacles
+ * Verifies node handles multiple obstacles correctly
+ */
 TEST_F(TestFrontierExplorer, TestMultipleObstacles) {
     auto scan = std::make_shared<sensor_msgs::msg::LaserScan>(*default_scan_);
     scan->ranges[30] = 0.8f;  // Left
@@ -101,6 +141,10 @@ TEST_F(TestFrontierExplorer, TestMultipleObstacles) {
     });
 }
 
+/**
+ * Test handling of invalid scan data
+ * Verifies node gracefully handles empty and invalid scans
+ */
 TEST_F(TestFrontierExplorer, TestInvalidScans) {
     // Empty scan
     auto empty_scan = std::make_shared<sensor_msgs::msg::LaserScan>();
@@ -121,6 +165,10 @@ TEST_F(TestFrontierExplorer, TestInvalidScans) {
     });
 }
 
+/**
+ * Test range validation
+ * Verifies node properly handles ranges outside min/max bounds
+ */
 TEST_F(TestFrontierExplorer, TestRangeValidation) {
     auto scan = std::make_shared<sensor_msgs::msg::LaserScan>(*default_scan_);
     
@@ -141,6 +189,10 @@ TEST_F(TestFrontierExplorer, TestRangeValidation) {
     });
 }
 
+/**
+ * Main function
+ * Initializes testing framework and runs all tests
+ */
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
