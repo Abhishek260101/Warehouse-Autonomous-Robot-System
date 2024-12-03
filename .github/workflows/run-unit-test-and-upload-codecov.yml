@@ -1,56 +1,62 @@
-name: ROS 2 CI
+name: Unit Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
-  build_and_test:
-    runs-on: ubuntu-latest
+  build-and-test:
+    runs-on: ubuntu-22.04
     container:
       image: ros:humble
-    
+
     steps:
-    - uses: actions/checkout@v2
-    
+    - uses: actions/checkout@v3
+      
     - name: Install dependencies
       run: |
         apt-get update
-        apt-get install -y python3-pip lcov
-        pip3 install gcovr
-        
-    - name: Create workspace and copy package
-      run: |
-        mkdir -p /ros2_ws/src
-        cp -r $GITHUB_WORKSPACE /ros2_ws/src/cpp_pkg
-        
-    - name: Install package dependencies
-      run: |
-        cd /ros2_ws
+        apt-get install -y python3-colcon-common-extensions lcov gcovr
         rosdep update
-        rosdep install --from-paths src --ignore-src -y
+        rosdep install --from-paths . --ignore-src -r -y
         
     - name: Build with coverage flags
       run: |
-        cd /ros2_ws
-        colcon build --cmake-args -DCMAKE_CXX_FLAGS="--coverage" -DCMAKE_EXE_LINKER_FLAGS="--coverage"
-        
+        . /opt/ros/humble/setup.sh
+        colcon build --packages-select frontier_explorer \
+          --cmake-args -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_CXX_FLAGS="--coverage" \
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
     - name: Run tests
       run: |
-        cd /ros2_ws
-        source install/setup.bash
-        colcon test
+        . /opt/ros/humble/setup.sh
+        . install/setup.sh
+        colcon test --packages-select frontier_explorer --event-handlers console_direct+
         colcon test-result --verbose
-        
+
     - name: Generate coverage report
       run: |
-        cd /ros2_ws/build/cpp_pkg
-        gcovr --xml coverage.xml --exclude-unreachable-branches --exclude-throw-branches
+        . /opt/ros/humble/setup.sh
+        . install/setup.sh
         
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+        # Create coverage report
+        lcov --directory build/frontier_explorer --capture \
+          --output-file coverage.info
+          
+        # Filter out system and test files
+        lcov --remove coverage.info \
+          '/opt/*' '/usr/*' '*/test/*' \
+          --output-file coverage.filtered
+          
+        # Generate HTML report
+        genhtml coverage.filtered \
+          --output-directory coverage_report
+
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
       with:
-        file: /ros2_ws/build/cpp_pkg/coverage.xml
-        fail_ci_if_error: true
+        name: code-coverage-report
+        path: coverage_report
