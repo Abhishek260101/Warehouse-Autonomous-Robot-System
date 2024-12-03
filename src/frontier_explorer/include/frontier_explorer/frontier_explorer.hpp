@@ -9,15 +9,22 @@
 #include <map>
 #include <string>
 
+class TestFrontierExplorer;
+
 class FrontierExplorer : public rclcpp::Node {
 public:
-    FrontierExplorer();
+    explicit FrontierExplorer(
+        const rclcpp::NodeOptions& options = rclcpp::NodeOptions()
+            .automatically_declare_parameters_from_overrides(true)
+            .allow_undeclared_parameters(false));
+    
+    friend class TestFrontierExplorer;
 
 private:
     void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
     void exploration_callback();
     void find_frontiers(const sensor_msgs::msg::LaserScan::SharedPtr& scan);
-    bool waitForMap(const rclcpp::Duration& timeout);  // Added waitForMap declaration
+    bool waitForMap(const rclcpp::Duration& timeout);
 
     // TF2 members
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -32,10 +39,8 @@ private:
     sensor_msgs::msg::LaserScan::SharedPtr current_scan_;
 
     // Robot namespace and parameters
-    std::string robot_namespace_;  // Added robot_namespace_ declaration
-
-    std::string map_frame_;  // Added for robot-specific map frame
-
+    std::string robot_namespace_;
+    std::string map_frame_;
 };
 
 #endif // FRONTIER_EXPLORER_HPP

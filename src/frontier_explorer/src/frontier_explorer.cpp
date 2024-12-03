@@ -5,10 +5,8 @@
 #include <chrono>
 #include <thread>
 
-FrontierExplorer::FrontierExplorer()
-: Node("frontier_explorer", rclcpp::NodeOptions()
-    .automatically_declare_parameters_from_overrides(true)
-    .allow_undeclared_parameters(false))  
+FrontierExplorer::FrontierExplorer(const rclcpp::NodeOptions& options)
+    : Node("frontier_explorer", options)
 {
     // Get robot namespace parameter - don't declare it, just get it
     robot_namespace_ = this->get_parameter("robot_namespace").as_string();
@@ -211,13 +209,4 @@ void FrontierExplorer::exploration_callback()
     }
     
     find_frontiers(current_scan_);
-}
-
-int main(int argc, char** argv)
-{
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<FrontierExplorer>();
-    rclcpp::spin(node);
-    rclcpp::shutdown();
-    return 0;
 }
