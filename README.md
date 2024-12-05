@@ -10,9 +10,9 @@
 
 ## Project Documentation
 
-- [Click to view our Sprint Plan](https://docs.google.com/document/d/1ba09P1LtX2oa4Xgsw8PJ3S9JoSZA7rdLhsY1Vzfunj0/edit?tab=t.0)
+- [**Sprint Plan:** Click to view](https://docs.google.com/document/d/1ba09P1LtX2oa4Xgsw8PJ3S9JoSZA7rdLhsY1Vzfunj0/edit?tab=t.0)
   
-- [Clivk to view our Backlog](https://docs.google.com/spreadsheets/d/1bFknVXY7FlzeFsWu55ukKkjZbq8C_RPbGdnfwVOcJKI/edit?usp=sharing)
+- [**Backlog:** Clivk to view](https://docs.google.com/spreadsheets/d/1bFknVXY7FlzeFsWu55ukKkjZbq8C_RPbGdnfwVOcJKI/edit?usp=sharing)
 
 ## Overview
 This project implements a multi-robot mapping system using ROS2 Humble that enables two carter robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
