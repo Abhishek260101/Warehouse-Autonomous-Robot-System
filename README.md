@@ -1,12 +1,22 @@
 # MULTI-ROBOT MAP MERGING      [Code: MuRoMM]
 
 
-![Screenshot from 2024-11-16 19-20-20](https://github.com/user-attachments/assets/2dde64ba-3bc4-45b3-98a7-5ec59935a6ba)
 
-
-![Screenshot from 2024-11-19 18-59-31](https://github.com/user-attachments/assets/bc097d65-2ae6-4a29-b4a4-ef06c7e8e7ca)
 
 ![CICD Workflow status](https://github.com/Abhishek260101/Warehouse-Autonomous-Robot-System/actions/workflows/run-unit-test-and-upload-codecov.yml/badge.svg) [![codecov](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System/graph/badge.svg?token=813CD16HJ6)](https://codecov.io/gh/Abhishek260101/Warehouse-Autonomous-Robot-System)[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+
+
+![Screenshot from 2024-11-25 18-22-57](https://github.com/user-attachments/assets/28cdfd28-a9a3-421e-9036-5036623a605d)
+
+![Screenshot from 2024-12-03 22-12-22](https://github.com/user-attachments/assets/1dbd852e-a369-46d4-9235-1405306669f1)
+
+
+## Resources
+
+- **Video Demonstration**: [View on Google Drive](https://drive.google.com/file/d/1XcQE9ShOaLuXS3wf0k5WA8yWZw5_CSXs/view?usp=sharing)
+- **Backlog**: [View the Backlog Spreadsheet](https://docs.google.com/spreadsheets/d/1bFknVXY7FlzeFsWu55ukKkjZbq8C_RPbGdnfwVOcJKI/edit?usp=sharing)
+- **Sprint Plan**: [View the Sprint Plan Document](https://docs.google.com/document/d/1ba09P1LtX2oa4Xgsw8PJ3S9JoSZA7rdLhsY1Vzfunj0/edit?usp=sharing)
 
 ## Overview
 This project implements a multi-robot mapping system using ROS2 Humble that enables two carter robots to explore and map an environment collaboratively. The system combines individual SLAM-generated maps from each robot to create a unified, comprehensive map of the environment.
