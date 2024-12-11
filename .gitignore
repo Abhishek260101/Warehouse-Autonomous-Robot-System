@@ -1,6 +1,9 @@
 build/
 install/
 log/
+coverage_report/
+coverage.filtered
+coverage.info
 .vscode/
 *.pyc
 __pycache__/

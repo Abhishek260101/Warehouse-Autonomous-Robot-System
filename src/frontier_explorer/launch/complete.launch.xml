@@ -10,7 +10,11 @@
             <param name="use_sim_time" value="$(var use_sim_time)"/>
             <param name="odom_frame" value="odom"/>
             <param name="base_frame" value="base_link"/>
+<<<<<<< HEAD
             <param name="map_frame" value="carter1/map"/>  <!-- Changed -->
+=======
+            <param name="map_frame" value="carter1/map"/>
+>>>>>>> phase2
             <param name="message_queue_size" value="2000"/>
             <param name="minimum_time_interval" value="0.5"/>
             <param name="transform_timeout" value="0.2"/>
@@ -21,7 +25,11 @@
             <remap from="odom" to="/carter1/chassis/odom"/>
             <remap from="tf" to="/carter1/tf"/>
             <remap from="tf_static" to="/carter1/tf_static"/>
+<<<<<<< HEAD
             <remap from="map" to="/carter1/map"/>  <!-- Added -->
+=======
+            <remap from="map" to="/carter1/map"/>
+>>>>>>> phase2
         </node>
 
         <!-- Frontier Explorer for carter1 -->
@@ -30,7 +38,11 @@
               output="screen">
             <param name="use_sim_time" value="$(var use_sim_time)"/>
             <param name="robot_namespace" value="carter1"/>
+<<<<<<< HEAD
             <param name="map_frame" value="carter1/map"/>  <!-- Added -->
+=======
+            <param name="map_frame" value="carter1/map"/>
+>>>>>>> phase2
             <remap from="tf" to="/carter1/tf"/>
             <remap from="tf_static" to="/carter1/tf_static"/>
         </node>
@@ -43,7 +55,11 @@
             <param name="use_sim_time" value="$(var use_sim_time)"/>
             <param name="odom_frame" value="odom"/>
             <param name="base_frame" value="base_link"/>
+<<<<<<< HEAD
             <param name="map_frame" value="carter2/map"/>  <!-- Changed -->
+=======
+            <param name="map_frame" value="carter2/map"/> 
+>>>>>>> phase2
             <param name="message_queue_size" value="2000"/>
             <param name="minimum_time_interval" value="0.5"/>
             <param name="transform_timeout" value="0.2"/>
@@ -54,7 +70,11 @@
             <remap from="odom" to="/carter2/chassis/odom"/>
             <remap from="tf" to="/carter2/tf"/>
             <remap from="tf_static" to="/carter2/tf_static"/>
+<<<<<<< HEAD
             <remap from="map" to="/carter2/map"/>  <!-- Added -->
+=======
+            <remap from="map" to="/carter2/map"/>
+>>>>>>> phase2
         </node>
 
         <!-- Frontier Explorer for carter2 -->
@@ -63,7 +83,11 @@
               output="screen">
             <param name="use_sim_time" value="$(var use_sim_time)"/>
             <param name="robot_namespace" value="carter2"/>
+<<<<<<< HEAD
             <param name="map_frame" value="carter2/map"/>  <!-- Added -->
+=======
+            <param name="map_frame" value="carter2/map"/>
+>>>>>>> phase2
             <remap from="tf" to="/carter2/tf"/>
             <remap from="tf_static" to="/carter2/tf_static"/>
         </node>

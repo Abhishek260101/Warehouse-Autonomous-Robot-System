@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 name: ROS 2 CI
 
 on:
@@ -54,3 +55,63 @@ jobs:
       with:
         file: /ros2_ws/build/cpp_pkg/coverage.xml
         fail_ci_if_error: true
+=======
+name: Run tests and upload coverage
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run tests and collect coverage
+    runs-on: ubuntu-22.04
+    container:
+      image: ros:humble
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Install dependencies
+      run: |
+        apt-get update
+        apt-get install -y python3-colcon-common-extensions lcov gcovr curl jq gpg
+        rosdep update
+        rosdep install --from-paths . --ignore-src -r -y
+        
+    - name: Build with coverage flags
+      run: |
+        . /opt/ros/humble/setup.sh
+        colcon build --packages-select frontier_explorer \
+          --cmake-args -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_CXX_FLAGS="--coverage" \
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+    - name: Run tests
+      run: |
+        . /opt/ros/humble/setup.sh
+        . install/setup.sh
+        colcon test --packages-select frontier_explorer --event-handlers console_direct+
+        colcon test-result --verbose
+
+    - name: Generate coverage report
+      run: |
+        . /opt/ros/humble/setup.sh
+        . install/setup.sh
+        lcov --directory build/frontier_explorer --capture --output-file coverage.info
+
+    - name: Upload results to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: coverage_report
+>>>>>>> phase2
